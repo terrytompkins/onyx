@@ -163,7 +163,7 @@ def _run_adapter_build(
             context=context,
         )
 
-    return result.chunks
+    return list(result.chunks)
 
 
 def test_build_metadata_aware_chunks_includes_persona_ids() -> None:

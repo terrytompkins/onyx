@@ -161,8 +161,9 @@ class TestAdapterWritesBothMetadataFields:
             context=context,
         )
 
-        assert len(result.chunks) == 1
-        aware_chunk = result.chunks[0]
+        result_chunks = list(result.chunks)
+        assert len(result_chunks) == 1
+        aware_chunk = result_chunks[0]
         assert persona.id in aware_chunk.personas
         assert aware_chunk.user_project == []
 
@@ -199,8 +200,9 @@ class TestAdapterWritesBothMetadataFields:
             context=context,
         )
 
-        assert len(result.chunks) == 1
-        aware_chunk = result.chunks[0]
+        result_chunks = list(result.chunks)
+        assert len(result_chunks) == 1
+        aware_chunk = result_chunks[0]
         assert project.id in aware_chunk.user_project
         assert aware_chunk.personas == []
 
@@ -239,7 +241,7 @@ class TestAdapterWritesBothMetadataFields:
             context=context,
         )
 
-        aware_chunk = result.chunks[0]
+        aware_chunk = list(result.chunks)[0]
         assert persona.id in aware_chunk.personas
         assert project.id in aware_chunk.user_project
 
@@ -272,7 +274,7 @@ class TestAdapterWritesBothMetadataFields:
             context=context,
         )
 
-        aware_chunk = result.chunks[0]
+        aware_chunk = list(result.chunks)[0]
         assert aware_chunk.personas == []
         assert aware_chunk.user_project == []
 
@@ -312,5 +314,5 @@ class TestAdapterWritesBothMetadataFields:
             context=context,
         )
 
-        aware_chunk = result.chunks[0]
+        aware_chunk = list(result.chunks)[0]
         assert set(aware_chunk.personas) == {persona_a.id, persona_b.id}
