@@ -5,6 +5,7 @@ flush-by-document logic, DocumentInsertionRecord construction, and
 delete-before-insert semantics.
 """
 
+from collections.abc import Iterator
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -247,3 +248,25 @@ def test_index_flushes_on_doc_boundary() -> None:
 
     # First flush: 3 chunks for doc1, second flush: 2 chunks for doc2
     assert bulk_call_chunk_counts == [3, 2]
+
+
+def test_index_with_generator_input() -> None:
+    """The index method works with a generator (iterable) input, not just lists."""
+    mock_client = MagicMock()
+    mock_client.bulk_index_documents.return_value = None
+
+    idx = _make_os_index(mock_client)
+
+    consumed: list[int] = []
+
+    def chunk_gen() -> Iterator[DocMetadataAwareIndexChunk]:
+        for i in range(3):
+            consumed.append(i)
+            yield _make_chunk("doc1", chunk_id=i)
+
+    with patch.object(idx, "delete", return_value=0):
+        metadata = _make_indexing_metadata(["doc1"], old_counts=[0], new_counts=[3])
+        results = idx.index(chunks=chunk_gen(), indexing_metadata=metadata)
+
+    assert consumed == [0, 1, 2]
+    assert len(results) == 1

@@ -5,6 +5,7 @@ the streaming logic, ID cleaning/mapping, and DocumentInsertionRecord
 construction.
 """
 
+from collections.abc import Iterator
 from unittest.mock import MagicMock
 from unittest.mock import patch
 from uuid import uuid4
@@ -371,3 +372,46 @@ def test_index_respects_batch_size(
     ]
     assert len(all_indexed) == 7
     assert [c.chunk_id for c in all_indexed] == list(range(7))
+
+
+@patch("onyx.document_index.vespa.vespa_document_index.batch_index_vespa_chunks")
+@patch("onyx.document_index.vespa.vespa_document_index.delete_vespa_chunks")
+@patch(
+    "onyx.document_index.vespa.vespa_document_index.get_document_chunk_ids",
+    return_value=[],
+)
+@patch("onyx.document_index.vespa.vespa_document_index._enrich_basic_chunk_info")
+def test_index_streams_chunks_lazily(
+    mock_enrich: MagicMock,
+    mock_get_chunk_ids: MagicMock,  # noqa: ARG001
+    mock_delete: MagicMock,  # noqa: ARG001
+    mock_batch_index: MagicMock,  # noqa: ARG001
+) -> None:
+    """Chunks are consumed lazily via a generator, not materialized upfront."""
+    mock_enrich.return_value = _stub_enrich("doc1", old_chunk_cnt=0)
+
+    index = VespaDocumentIndex(
+        index_name="test_index",
+        tenant_state=TenantState(tenant_id="test_tenant", multitenant=False),
+        large_chunks_enabled=False,
+        httpx_client=MagicMock(),
+    )
+
+    consumed: list[int] = []
+
+    def chunk_generator() -> Iterator[DocMetadataAwareIndexChunk]:
+        for i in range(3):
+            consumed.append(i)
+            yield _make_chunk("doc1", chunk_id=i)
+
+    metadata = _make_indexing_metadata(["doc1"], old_counts=[0], new_counts=[3])
+
+    # Before calling index, nothing consumed
+    gen = chunk_generator()
+    assert len(consumed) == 0
+
+    results = index.index(chunks=gen, indexing_metadata=metadata)
+
+    # After calling index, all chunks should have been consumed
+    assert consumed == [0, 1, 2]
+    assert len(results) == 1
