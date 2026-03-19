@@ -4,7 +4,7 @@ import { toast } from "@/hooks/useToast";
 import { basicLogin, basicSignup } from "@/lib/user";
 import { Button } from "@opal/components";
 import { Disabled } from "@opal/core";
-import { noProp } from "@/lib/utils";
+
 import { Form, Formik } from "formik";
 import * as Yup from "yup";
 import { requestEmailVerification } from "../lib";
@@ -248,9 +248,6 @@ export default function EmailPasswordForm({
                   type="submit"
                   width="full"
                   rightIcon={SvgArrowRightCircle}
-                  // HACK: Formik handles when something of type="submit" is clicked, but `onClick`
-                  // is used by the Button to properly style itself, so we pass a no-op function.
-                  onClick={noProp()}
                 >
                   {isJoin ? "Join" : isSignup ? "Create Account" : "Sign In"}
                 </Button>
