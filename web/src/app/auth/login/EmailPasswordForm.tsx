@@ -4,7 +4,6 @@ import { toast } from "@/hooks/useToast";
 import { basicLogin, basicSignup } from "@/lib/user";
 import { Button } from "@opal/components";
 import { Disabled } from "@opal/core";
-
 import { Form, Formik } from "formik";
 import * as Yup from "yup";
 import { requestEmailVerification } from "../lib";
