@@ -54,7 +54,6 @@ interface InteractiveStatelessProps
   group?: string;
 
   /**
-  /**
    * HTML button type. When set to `"submit"`, `"button"`, or `"reset"`, the
    * element is treated as inherently interactive for cursor styling purposes
    * even without an explicit `onClick` or `href`.
