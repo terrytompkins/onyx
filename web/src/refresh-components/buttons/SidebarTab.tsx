@@ -58,11 +58,13 @@ export default function SidebarTab({
         variant="sidebar"
         state={selected ? "selected" : "empty"}
         onClick={onClick}
+        type="button"
         group="group/SidebarTab"
       >
         <Interactive.Container
           roundingVariant="compact"
           heightVariant="lg"
+          type="button"
           widthVariant="full"
         >
           {href && (
