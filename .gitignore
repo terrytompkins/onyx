@@ -29,6 +29,10 @@ backend/onyx/evals/one_off/*.json
 *.log
 *.csv
 
+# install.sh default install root (downloaded compose, nginx templates, local .env)
+/onyx_data/
+deployment/docker_compose/onyx_data/
+
 # secret files
 .env
 jira_test_env

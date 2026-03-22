@@ -11,6 +11,7 @@ SHUTDOWN_MODE=false
 DELETE_DATA_MODE=false
 INCLUDE_CRAFT=false  # Disabled by default, use --include-craft to enable
 LITE_MODE=false       # Disabled by default, use --lite to enable
+STANDARD_MODE=false   # Disabled by default, use --standard for full stack without prompts
 USE_LOCAL_FILES=false # Disabled by default, use --local to skip downloading config files
 NO_PROMPT=false
 DRY_RUN=false
@@ -32,6 +33,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         --lite)
             LITE_MODE=true
+            shift
+            ;;
+        --standard)
+            STANDARD_MODE=true
+            LITE_MODE=false
             shift
             ;;
         --local)
@@ -58,6 +64,7 @@ while [[ $# -gt 0 ]]; do
             echo "Options:"
             echo "  --include-craft  Enable Onyx Craft (AI-powered web app building)"
             echo "  --lite           Deploy Onyx Lite (no Vespa, Redis, or model servers)"
+            echo "  --standard       Deploy full stack (RAG, connectors); skips the mode prompt"
             echo "  --local          Use existing config files instead of downloading from GitHub"
             echo "  --shutdown       Stop (pause) Onyx containers"
             echo "  --delete-data    Remove all Onyx data (containers, volumes, and files)"
@@ -69,6 +76,7 @@ while [[ $# -gt 0 ]]; do
             echo "Examples:"
             echo "  $0                    # Install Onyx"
             echo "  $0 --lite             # Install Onyx Lite (minimal deployment)"
+            echo "  $0 --standard         # Install full Onyx (non-interactive standard mode)"
             echo "  $0 --include-craft    # Install Onyx with Craft enabled"
             echo "  $0 --shutdown         # Pause Onyx services"
             echo "  $0 --delete-data      # Completely remove Onyx and all data"
@@ -86,6 +94,11 @@ done
 
 if [[ "$VERBOSE" = true ]]; then
     set -x
+fi
+
+if [[ "$LITE_MODE" = true ]] && [[ "$STANDARD_MODE" = true ]]; then
+    echo "ERROR: --lite and --standard cannot be used together."
+    exit 1
 fi
 
 if [[ "$LITE_MODE" = true ]] && [[ "$INCLUDE_CRAFT" = true ]]; then
@@ -400,6 +413,7 @@ if [[ "$DRY_RUN" = true ]]; then
     print_info "Dry run mode — showing what would happen:"
     echo "  • Install root: ${INSTALL_ROOT}"
     echo "  • Lite mode: ${LITE_MODE}"
+    echo "  • Standard flag: ${STANDARD_MODE}"
     echo "  • Include Craft: ${INCLUDE_CRAFT}"
     echo "  • OS type: ${OSTYPE:-unknown} (WSL: ${IS_WSL})"
     echo "  • Downloader: ${DOWNLOADER}"
@@ -750,8 +764,12 @@ if [ "$COMPOSE_VERSION" != "dev" ] && version_compare "$COMPOSE_VERSION" "2.24.0
     print_info "Proceeding with installation despite Docker Compose version compatibility issues..."
 fi
 
-# Ask for deployment mode (standard vs lite) unless already set via --lite flag
-if [[ "$LITE_MODE" = false ]]; then
+# Ask for deployment mode (standard vs lite) unless set via --lite / --standard
+if [[ "$LITE_MODE" = true ]]; then
+    print_info "Deployment mode: Lite (set via --lite flag)"
+elif [[ "$STANDARD_MODE" = true ]]; then
+    print_info "Deployment mode: Standard (set via --standard flag)"
+elif is_interactive; then
     print_info "Which deployment mode would you like?"
     echo ""
     echo "  1) Lite      - Minimal deployment (no Vespa, Redis, or model servers)"
@@ -771,7 +789,9 @@ if [[ "$LITE_MODE" = false ]]; then
             ;;
     esac
 else
-    print_info "Deployment mode: Lite (set via --lite flag)"
+    # Non-interactive install without --lite/--standard: keep previous default (Lite).
+    LITE_MODE=true
+    print_info "Deployment mode: Lite (non-interactive default; use --standard for full RAG stack)"
 fi
 
 if [[ "$LITE_MODE" = true ]] && [[ "$INCLUDE_CRAFT" = true ]]; then
