@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import litellm
@@ -16,6 +17,11 @@ def configure_litellm_settings() -> None:
     litellm.modify_params = True
     litellm.add_function_to_prompt = False
     litellm.suppress_debug_info = True
+
+    # Disable SSL verification when SSL_VERIFY=false (e.g. corporate TLS inspection)
+    if os.environ.get("SSL_VERIFY", "true").lower() in ("false", "0"):
+        litellm.ssl_verify = False
+        logger.info("SSL verification disabled for LLM API calls (SSL_VERIFY=false)")
 
 
 # TODO: We might not need to register ollama_chat in addition to ollama but let's just do it for good measure for now.

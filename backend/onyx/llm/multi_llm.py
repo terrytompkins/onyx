@@ -400,6 +400,10 @@ class LitellmLLM(LLM):
         # Optional kwargs - should only be passed to LiteLLM under certain conditions
         optional_kwargs: dict[str, Any] = {}
 
+        # SSL verification (disable for corporate TLS inspection networks)
+        if os.environ.get("SSL_VERIFY", "true").lower() in ("false", "0"):
+            optional_kwargs["ssl_verify"] = False
+
         # Model name
         model_provider = (
             f"{self.config.model_provider}/responses"

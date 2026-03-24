@@ -150,7 +150,9 @@ cd ~/onyx-deploy/onyx/deployment/docker_compose
 
    If you terminate TLS in front of nginx later, switch to `https://...` and align with your load balancer / cert.
 
-4. Keep **`COMPOSE_PROFILES=s3-filestore`**, default **`POSTGRES_HOST`**, **`VESPA_HOST`**, etc., as in [`LOCAL_DEMO_SETUP.md`](./LOCAL_DEMO_SETUP.md) unless you intentionally change storage.
+4. (Optional) Set **`INVITE_ONLY_ENABLED=true`** to require admin invites for new signups. Without this, anyone with the URL can create an account.
+
+5. Keep **`COMPOSE_PROFILES=s3-filestore`**, default **`POSTGRES_HOST`**, **`VESPA_HOST`**, etc., as in [`LOCAL_DEMO_SETUP.md`](./LOCAL_DEMO_SETUP.md) unless you intentionally change storage.
 
 ---
 

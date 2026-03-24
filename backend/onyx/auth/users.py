@@ -85,6 +85,7 @@ from onyx.configs.app_configs import AUTH_BACKEND
 from onyx.configs.app_configs import AUTH_COOKIE_EXPIRE_TIME_SECONDS
 from onyx.configs.app_configs import AUTH_TYPE
 from onyx.configs.app_configs import EMAIL_CONFIGURED
+from onyx.configs.app_configs import INVITE_ONLY_ENABLED_OVERRIDE
 from onyx.configs.app_configs import JWT_PUBLIC_KEY_URL
 from onyx.configs.app_configs import PASSWORD_MAX_LENGTH
 from onyx.configs.app_configs import PASSWORD_MIN_LENGTH
@@ -236,6 +237,8 @@ def anonymous_user_enabled(*, tenant_id: str | None = None) -> bool:
 
 
 def workspace_invite_only_enabled() -> bool:
+    if INVITE_ONLY_ENABLED_OVERRIDE is not None:
+        return INVITE_ONLY_ENABLED_OVERRIDE
     settings = load_settings()
     return settings.invite_only_enabled
 

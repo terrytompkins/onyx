@@ -993,6 +993,13 @@ MANAGED_VESPA = os.environ.get("MANAGED_VESPA", "").lower() == "true"
 
 ENABLE_EMAIL_INVITES = os.environ.get("ENABLE_EMAIL_INVITES", "").lower() == "true"
 
+# When set to "true" or "false", overrides the invite-only setting stored in Admin. When unset,
+# uses the stored value. Use INVITE_ONLY_ENABLED=true in .env to require invites for new signups.
+_invite_only_raw = os.environ.get("INVITE_ONLY_ENABLED", "").lower()
+INVITE_ONLY_ENABLED_OVERRIDE: bool | None = (
+    None if _invite_only_raw == "" else (_invite_only_raw == "true")
+)
+
 # Limit on number of users a free trial tenant can invite (cloud only)
 NUM_FREE_TRIAL_USER_INVITES = int(os.environ.get("NUM_FREE_TRIAL_USER_INVITES", "10"))
 
