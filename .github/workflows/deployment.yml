@@ -615,6 +615,7 @@ jobs:
           tags: |
             type=raw,value=${{ needs.determine-builds.outputs.is-test-run == 'true' && format('web-{0}', needs.determine-builds.outputs.sanitized-tag) || github.ref_name }}
             type=raw,value=${{ needs.determine-builds.outputs.is-test-run != 'true' && needs.determine-builds.outputs.is-latest == 'true' && 'latest' || '' }}
+            type=raw,value=${{ needs.determine-builds.outputs.is-test-run != 'true' && needs.determine-builds.outputs.is-latest == 'true' && 'craft-latest' || '' }}
             type=raw,value=${{ needs.determine-builds.outputs.is-test-run != 'true' && env.EDGE_TAG == 'true' && 'edge' || '' }}
             type=raw,value=${{ needs.determine-builds.outputs.is-test-run != 'true' && needs.determine-builds.outputs.is-beta == 'true' && 'beta' || '' }}
 
@@ -703,6 +704,9 @@ jobs:
             NEXT_PUBLIC_FORGOT_PASSWORD_ENABLED=true
             NEXT_PUBLIC_INCLUDE_ERROR_POPUP_SUPPORT_LINK=true
             NODE_OPTIONS=--max-old-space-size=8192
+            SENTRY_RELEASE=${{ github.sha }}
+          secrets: |
+            sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}
           cache-from: |
             type=registry,ref=${{ env.RUNS_ON_ECR_CACHE }}:cloudweb-cache-amd64
             type=registry,ref=${{ env.REGISTRY_IMAGE }}:latest
@@ -785,6 +789,9 @@ jobs:
             NEXT_PUBLIC_FORGOT_PASSWORD_ENABLED=true
             NEXT_PUBLIC_INCLUDE_ERROR_POPUP_SUPPORT_LINK=true
             NODE_OPTIONS=--max-old-space-size=8192
+            SENTRY_RELEASE=${{ github.sha }}
+          secrets: |
+            sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}
           cache-from: |
             type=registry,ref=${{ env.RUNS_ON_ECR_CACHE }}:cloudweb-cache-arm64
             type=registry,ref=${{ env.REGISTRY_IMAGE }}:latest
@@ -1263,8 +1270,6 @@ jobs:
             latest=false
           tags: |
             type=raw,value=craft-latest
-            # TODO: Consider aligning craft-latest tags with regular backend builds (e.g., latest, edge, beta)
-            # to keep tagging strategy consistent across all backend images
 
       - name: Create and push manifest
         env:
@@ -1488,6 +1493,7 @@ jobs:
           tags: |
             type=raw,value=${{ needs.determine-builds.outputs.is-test-run == 'true' && format('model-server-{0}', needs.determine-builds.outputs.sanitized-tag) || github.ref_name }}
             type=raw,value=${{ needs.determine-builds.outputs.is-test-run != 'true' && needs.determine-builds.outputs.is-latest == 'true' && 'latest' || '' }}
+            type=raw,value=${{ needs.determine-builds.outputs.is-test-run != 'true' && needs.determine-builds.outputs.is-latest == 'true' && 'craft-latest' || '' }}
             type=raw,value=${{ needs.determine-builds.outputs.is-test-run != 'true' && env.EDGE_TAG == 'true' && 'edge' || '' }}
             type=raw,value=${{ needs.determine-builds.outputs.is-test-run != 'true' && needs.determine-builds.outputs.is-beta-standalone == 'true' && 'beta' || '' }}
 

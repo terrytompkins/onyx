@@ -83,6 +83,7 @@ import InputTypeIn from "@/refresh-components/inputs/InputTypeIn";
 import useFilter from "@/hooks/useFilter";
 import EnabledCount from "@/refresh-components/EnabledCount";
 import { useAppRouter } from "@/hooks/appNavigation";
+import { isDateInFuture } from "@/lib/dateUtils";
 import {
   deleteAgent,
   updateAgentFeaturedStatus,
@@ -699,7 +700,14 @@ export default function AgentEditorPage({
     // Advanced
     llm_model_provider_override: Yup.string().nullable().optional(),
     llm_model_version_override: Yup.string().nullable().optional(),
-    knowledge_cutoff_date: Yup.date().nullable().optional(),
+    knowledge_cutoff_date: Yup.date()
+      .nullable()
+      .optional()
+      .test(
+        "knowledge-cutoff-date-not-in-future",
+        "Knowledge cutoff date must be today or earlier.",
+        (value) => !value || !isDateInFuture(value)
+      ),
     replace_base_system_prompt: Yup.boolean(),
     reminders: Yup.string().optional(),
 
@@ -1260,7 +1268,7 @@ export default function AgentEditorPage({
                           <InputLayouts.Vertical
                             name="description"
                             title="Description"
-                            optional
+                            suffix="optional"
                           >
                             <InputTextAreaField
                               name="description"
@@ -1285,7 +1293,7 @@ export default function AgentEditorPage({
                         <InputLayouts.Vertical
                           name="instructions"
                           title="Instructions"
-                          optional
+                          suffix="optional"
                           description="Add instructions to tailor the response for this agent."
                         >
                           <InputTextAreaField
@@ -1298,7 +1306,7 @@ export default function AgentEditorPage({
                           name="starter_messages"
                           title="Conversation Starters"
                           description="Example messages that help users understand what this agent can do and how to interact with it effectively."
-                          optional
+                          suffix="optional"
                         >
                           <StarterMessages />
                         </InputLayouts.Vertical>
@@ -1521,7 +1529,7 @@ export default function AgentEditorPage({
                               <InputLayouts.Horizontal
                                 name="llm_model"
                                 title="Default Model"
-                                description="Select the LLM model to use for this agent. If not set, the user's default model will be used."
+                                description="This model will be used by Onyx by default in your chats."
                               >
                                 <LLMSelector
                                   name="llm_model"
@@ -1538,14 +1546,19 @@ export default function AgentEditorPage({
                               <InputLayouts.Horizontal
                                 name="knowledge_cutoff_date"
                                 title="Knowledge Cutoff Date"
-                                description="Set the knowledge cutoff date for this agent. The agent will only use information up to this date."
+                                suffix="optional"
+                                description="Documents with a last-updated date prior to this will be ignored."
                               >
-                                <InputDatePickerField name="knowledge_cutoff_date" />
+                                <InputDatePickerField
+                                  name="knowledge_cutoff_date"
+                                  maxDate={new Date()}
+                                />
                               </InputLayouts.Horizontal>
                               <InputLayouts.Horizontal
                                 name="replace_base_system_prompt"
                                 title="Overwrite System Prompt"
-                                description='Completely replace the base system prompt. This might affect response quality since it will also overwrite useful system instructions (e.g. "You (the LLM) can provide markdown and it will be rendered").'
+                                suffix="(Not Recommended)"
+                                description='Remove the base system prompt which includes useful instructions (e.g. "You can use Markdown tables"). This may affect response quality.'
                               >
                                 <SwitchField name="replace_base_system_prompt" />
                               </InputLayouts.Horizontal>
@@ -1555,6 +1568,7 @@ export default function AgentEditorPage({
                               <InputLayouts.Vertical
                                 name="reminders"
                                 title="Reminders"
+                                suffix="optional"
                               >
                                 <InputTextAreaField
                                   name="reminders"
