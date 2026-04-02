@@ -27,6 +27,7 @@ from onyx.auth.email_utils import send_user_email_invite
 from onyx.auth.invited_users import get_invited_users
 from onyx.auth.invited_users import remove_user_from_invited_users
 from onyx.auth.invited_users import write_invited_users
+from onyx.auth.permissions import get_effective_permissions
 from onyx.auth.schemas import UserRole
 from onyx.auth.users import anonymous_user_enabled
 from onyx.auth.users import current_admin_user
@@ -50,6 +51,7 @@ from onyx.configs.constants import PUBLIC_API_TAGS
 from onyx.db.api_key import is_api_key_email_address
 from onyx.db.auth import get_live_users_count
 from onyx.db.engine.sql_engine import get_session
+from onyx.db.enums import AccountType
 from onyx.db.enums import UserFileStatus
 from onyx.db.models import User
 from onyx.db.models import UserFile
@@ -57,6 +59,7 @@ from onyx.db.user_preferences import activate_user
 from onyx.db.user_preferences import deactivate_user
 from onyx.db.user_preferences import get_all_user_assistant_specific_configs
 from onyx.db.user_preferences import get_latest_access_token_for_user
+from onyx.db.user_preferences import get_memories_for_user
 from onyx.db.user_preferences import update_assistant_preferences
 from onyx.db.user_preferences import update_user_assistant_visibility
 from onyx.db.user_preferences import update_user_auto_scroll
@@ -141,6 +144,7 @@ def set_user_role(
     validate_user_role_update(
         requested_role=requested_role,
         current_role=current_role,
+        current_account_type=user_to_update.account_type,
         explicit_override=user_role_update_request.explicit_override,
     )
 
@@ -326,8 +330,8 @@ def list_all_users(
         if (include_api_keys or not is_api_key_email_address(user.email))
     ]
 
-    slack_users = [user for user in users if user.role == UserRole.SLACK_USER]
-    accepted_users = [user for user in users if user.role != UserRole.SLACK_USER]
+    slack_users = [user for user in users if user.account_type == AccountType.BOT]
+    accepted_users = [user for user in users if user.account_type != AccountType.BOT]
 
     accepted_emails = {user.email for user in accepted_users}
     slack_users_emails = {user.email for user in slack_users}
@@ -670,7 +674,7 @@ def list_all_users_basic_info(
     return [
         MinimalUserSnapshot(id=user.id, email=user.email)
         for user in users
-        if user.role != UserRole.SLACK_USER
+        if user.account_type != AccountType.BOT
         and (include_api_keys or not is_api_key_email_address(user.email))
     ]
 
@@ -773,6 +777,13 @@ def _get_token_created_at(
     return get_current_token_creation_postgres(user, db_session)
 
 
+@router.get("/me/permissions", tags=PUBLIC_API_TAGS)
+def get_current_user_permissions(
+    user: User = Depends(current_user),
+) -> list[str]:
+    return sorted(p.value for p in get_effective_permissions(user))
+
+
 @router.get("/me", tags=PUBLIC_API_TAGS)
 def verify_user_logged_in(
     request: Request,
@@ -823,6 +834,11 @@ def verify_user_logged_in(
             [],
         ),
     )
+    memories = [
+        MemoryItem(id=memory.id, content=memory.memory_text)
+        for memory in get_memories_for_user(user.id, db_session)
+    ]
+
     user_info = UserInfo.from_model(
         user,
         current_token_created_at=token_created_at,
@@ -833,6 +849,7 @@ def verify_user_logged_in(
             new_tenant=new_tenant,
             invitation=tenant_invitation,
         ),
+        memories=memories,
     )
 
     return user_info
@@ -930,7 +947,8 @@ def update_user_personalization_api(
         else user.enable_memory_tool
     )
     existing_memories = [
-        MemoryItem(id=memory.id, content=memory.memory_text) for memory in user.memories
+        MemoryItem(id=memory.id, content=memory.memory_text)
+        for memory in get_memories_for_user(user.id, db_session)
     ]
     new_memories = (
         request.memories if request.memories is not None else existing_memories

@@ -2,6 +2,7 @@
 
 import { useCallback, memo, useMemo, useState, useEffect, useRef } from "react";
 import useSWR from "swr";
+import { SWR_KEYS } from "@/lib/swr-keys";
 import { useRouter } from "next/navigation";
 import { useSettingsContext } from "@/providers/SettingsProvider";
 import { MinimalPersonaSnapshot } from "@/app/admin/agents/interfaces";
@@ -50,7 +51,7 @@ import {
   LOCAL_STORAGE_KEYS,
 } from "@/sections/sidebar/constants";
 import { showErrorNotification, handleMoveOperation } from "./sidebarUtils";
-import SidebarTab from "@/refresh-components/buttons/SidebarTab";
+import { SidebarTab } from "@opal/components";
 import { ChatSession } from "@/app/app/interfaces";
 import SidebarBody from "@/sections/sidebar/SidebarBody";
 import { useUser } from "@/providers/UserProvider";
@@ -253,7 +254,7 @@ const MemoizedAppSidebarInner = memo(
     // Fetch notifications for build mode intro
     const { data: notifications, mutate: mutateNotifications } = useSWR<
       Notification[]
-    >("/api/notifications", errorHandlingFetcher);
+    >(SWR_KEYS.notifications, errorHandlingFetcher);
 
     // Check if Onyx Craft is enabled via settings (backed by PostHog feature flag)
     // Only explicit true enables the feature; false or undefined = disabled
@@ -561,7 +562,7 @@ const MemoizedAppSidebarInner = memo(
             href="/app/agents"
             folded={folded}
             selected={activeSidebarTab.isMoreAgents()}
-            lowlight={!folded}
+            variant={folded ? "sidebar-heavy" : "sidebar-light"}
           >
             {visibleAgents.length === 0 ? "Explore Agents" : "More Agents"}
           </SidebarTab>
@@ -576,7 +577,7 @@ const MemoizedAppSidebarInner = memo(
           onClick={() => createProjectModal.toggle(true)}
           selected={createProjectModal.isOpen}
           folded={folded}
-          lowlight={!folded}
+          variant={folded ? "sidebar-heavy" : "sidebar-light"}
         >
           New Project
         </SidebarTab>

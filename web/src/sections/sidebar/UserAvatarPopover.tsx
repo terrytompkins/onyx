@@ -5,12 +5,13 @@ import { LOGOUT_DISABLED } from "@/lib/constants";
 import { Notification } from "@/interfaces/settings";
 import useSWR, { preload } from "swr";
 import { errorHandlingFetcher } from "@/lib/fetcher";
+import { SWR_KEYS } from "@/lib/swr-keys";
 import { checkUserIsNoAuthUser, getUserDisplayName, logout } from "@/lib/user";
 import { useUser } from "@/providers/UserProvider";
 import LineItem from "@/refresh-components/buttons/LineItem";
 import Popover, { PopoverMenu } from "@/refresh-components/Popover";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import SidebarTab from "@/refresh-components/buttons/SidebarTab";
+import { SidebarTab } from "@opal/components";
 import NotificationsPopover from "@/sections/sidebar/NotificationsPopover";
 import {
   SvgBell,
@@ -36,7 +37,7 @@ function SettingsPopover({
 }: SettingsPopoverProps) {
   const { user } = useUser();
   const { data: notifications } = useSWR<Notification[]>(
-    "/api/notifications",
+    SWR_KEYS.notifications,
     errorHandlingFetcher,
     { revalidateOnFocus: false }
   );
@@ -154,7 +155,7 @@ export default function UserAvatarPopover({
   // Fetch notifications for display
   // The GET endpoint also triggers a refresh if release notes are stale
   const { data: notifications } = useSWR<Notification[]>(
-    "/api/notifications",
+    SWR_KEYS.notifications,
     errorHandlingFetcher
   );
 
