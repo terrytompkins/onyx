@@ -3,9 +3,9 @@ Description: CloudFormation template for Onyx Backend Api Server TaskDefinition
 Parameters:
   Environment:
     Type: String
-  SubnetIDs:
+  PrivateSubnetIDs:
     Type: CommaDelimitedList
-    Description: "Comma-delimited list of at least two subnet IDs in different Availability Zones"
+    Description: "Comma-delimited list of private subnet IDs where ECS tasks run (no public IPs)"
   VpcID:
     Type: String
     Default: vpc-098cfa79d637dabff
@@ -21,6 +21,14 @@ Parameters:
   TaskDesiredCount:
     Type: Number
     Default: 1
+  OnyxImageTag:
+    Type: String
+    Default: "latest"
+    Description: >
+      Docker image tag for the Onyx backend image
+      (onyxdotapp/onyx-backend:<tag>). Use "latest" for the newest build or a
+      specific release tag (e.g. "v0.12.0") for a pinned version.
+      Update via ./update.sh after changing this value.
 
 Resources:
 
@@ -41,10 +49,12 @@ Resources:
       AvailabilityZoneRebalancing: ENABLED
       NetworkConfiguration:
         AwsvpcConfiguration:
-          AssignPublicIp: ENABLED
+          AssignPublicIp: DISABLED
           SecurityGroups:
-            - Ref: SecurityGroup
-          Subnets: !Ref SubnetIDs
+            - !Ref SecurityGroup
+            - Fn::ImportValue:
+                Fn::Sub: "${Environment}-onyx-efs-ECSTasksSecurityGroup"
+          Subnets: !Ref PrivateSubnetIDs
       PlatformVersion: LATEST
       DeploymentConfiguration:
         MaximumPercent: 200
@@ -77,11 +87,9 @@ Resources:
         - FromPort: 8080
           ToPort: 8080
           IpProtocol: tcp
-          CidrIp: 0.0.0.0/0
-        - FromPort: 8080
-          ToPort: 8080
-          IpProtocol: tcp
-          CidrIpv6: "::/0"
+          SourceSecurityGroupId:
+            Fn::ImportValue:
+              Fn::Sub: "${Environment}-onyx-efs-ECSTasksSecurityGroup"
 
   ServiceDiscoveryService:
     Type: "AWS::ServiceDiscovery::Service"
@@ -117,7 +125,7 @@ Resources:
         OperatingSystemFamily: LINUX
       ContainerDefinitions:
         - Name: onyx-backend
-          Image: onyxdotapp/onyx-backend:latest
+          Image: !Sub "onyxdotapp/onyx-backend:${OnyxImageTag}"
           Cpu: 0
           Essential: true
           Command:
@@ -173,6 +181,14 @@ Resources:
               ValueFrom: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Environment}/postgres/user/password
             - Name: USER_AUTH_SECRET
               ValueFrom: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Environment}/onyx/user-auth-secret
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - "wget -qO- http://localhost:8080/api/health || exit 1"
+            Interval: 15
+            Timeout: 10
+            Retries: 5
+            StartPeriod: 60
           VolumesFrom: []
           SystemControls: []
 

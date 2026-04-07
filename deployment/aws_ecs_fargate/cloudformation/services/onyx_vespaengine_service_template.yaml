@@ -3,9 +3,9 @@ Description: CloudFormation template for Onyx Vespa Engine TaskDefinition
 Parameters:
   Environment:
     Type: String
-  SubnetIDs:
+  PrivateSubnetIDs:
     Type: CommaDelimitedList
-    Description: "Comma-delimited list of at least two subnet IDs in different Availability Zones"
+    Description: "Comma-delimited list of private subnet IDs where ECS tasks run (no public IPs)"
   VpcID:
     Type: String
     Default: vpc-098cfa79d637dabff
@@ -41,10 +41,12 @@ Resources:
       AvailabilityZoneRebalancing: ENABLED
       NetworkConfiguration:
         AwsvpcConfiguration:
-          AssignPublicIp: ENABLED
+          AssignPublicIp: DISABLED
           SecurityGroups:
-            - Ref: SecurityGroup
-          Subnets: !Ref SubnetIDs
+            - !Ref SecurityGroup
+            - Fn::ImportValue:
+                Fn::Sub: "${Environment}-onyx-efs-ECSTasksSecurityGroup"
+          Subnets: !Ref PrivateSubnetIDs
       PlatformVersion: LATEST
       DeploymentConfiguration:
         MaximumPercent: 200
@@ -77,25 +79,15 @@ Resources:
         - FromPort: 19071
           ToPort: 19071
           IpProtocol: tcp
-          CidrIp: 0.0.0.0/0
-        - FromPort: 19071
-          ToPort: 19071
-          IpProtocol: tcp
-          CidrIpv6: "::/0"
+          SourceSecurityGroupId:
+            Fn::ImportValue:
+              Fn::Sub: "${Environment}-onyx-efs-ECSTasksSecurityGroup"
         - FromPort: 8081
           ToPort: 8081
-          IpProtocol: tcp
-          CidrIp: 0.0.0.0/0
-        - FromPort: 8081
-          ToPort: 8081
-          IpProtocol: tcp
-          CidrIpv6: "::/0"
-        - FromPort: 2049
-          ToPort: 2049
           IpProtocol: tcp
           SourceSecurityGroupId:
             Fn::ImportValue:
-              Fn::Sub: "${Environment}-onyx-efs-EFSSecurityGroupMountTargets"
+              Fn::Sub: "${Environment}-onyx-efs-ECSTasksSecurityGroup"
 
   ServiceDiscoveryService:
     Type: "AWS::ServiceDiscovery::Service"
@@ -162,6 +154,14 @@ Resources:
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: ecs
           User: "1000"
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - "wget -qO- http://localhost:19071/state/v1/health || exit 1"
+            Interval: 15
+            Timeout: 10
+            Retries: 5
+            StartPeriod: 120
           Environment:
             - Name: VESPA_SKIP_UPGRADE_CHECK
               Value: "true"

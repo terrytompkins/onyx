@@ -2,18 +2,26 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: "The template used to create an ECS Service from the ECS Console."
 
 Parameters:
-  SubnetIDs:
-      Type: CommaDelimitedList
-      Description: "Comma-delimited list of at least two subnet IDs in different Availability Zones"
+  PublicSubnetIDs:
+    Type: CommaDelimitedList
+    Description: >
+      Comma-delimited list of public subnet IDs (at least 2 in different AZs) used
+      by the Application Load Balancer. These subnets must have internet-gateway
+      routes. ECS tasks do NOT run here.
+  PrivateSubnetIDs:
+    Type: CommaDelimitedList
+    Description: >
+      Comma-delimited list of private subnet IDs where the nginx ECS task runs.
+      Must have outbound internet access via a NAT Gateway.
   VpcID:
-      Type: String
-      Default: vpc-098cfa79d637dabff
+    Type: String
+    Default: vpc-098cfa79d637dabff
   HostedZoneId:
-      Type: String
-      Default: ''
+    Type: String
+    Default: ''
   DomainName:
-      Type: String
-      Default: demo.danswer.ai
+    Type: String
+    Default: demo.danswer.ai
   Environment:
     Type: String
   ServiceName:
@@ -37,25 +45,36 @@ Parameters:
   TaskDesiredCount:
     Type: Number
     Default: 1
-  GitHubConfigUrl:
+  CertificateArn:
     Type: String
-    Default: "https://raw.githubusercontent.com/onyx-dot-app/onyx/main/deployment/data/nginx/app.conf.template"
-    Description: "URL to the nginx configuration file on GitHub"
-  GitHubRunScriptUrl:
+    Default: ''
+    Description: >
+      ARN of the ACM certificate to attach to the HTTPS listener. When set, the
+      HTTP listener redirects to HTTPS and a port-443 listener is created.
+      Populated automatically by deploy.sh from the ACM stack output when
+      HostedZoneId is configured. Leave blank to run HTTP-only.
+  S3Bucket:
     Type: String
-    Default: "https://raw.githubusercontent.com/onyx-dot-app/onyx/main/deployment/data/nginx/run-nginx.sh"
-    Description: "URL to the nginx run script on GitHub"
+    Description: >
+      Name of the S3 bucket that holds the nginx configuration files.
+      deploy.sh uploads app.conf.template and run-nginx.sh to the
+      nginx/ prefix of this bucket before the nginx service stack deploys.
+      The cluster stack creates this bucket as <Environment>-onyx-ecs-fargate-configs.
 
 Conditions:
-  CreateRoute53: !Not 
-    - !Equals 
+  CreateRoute53: !Not
+    - !Equals
       - !Ref HostedZoneId
+      - ''
+  CreateHttpsListener: !Not
+    - !Equals
+      - !Ref CertificateArn
       - ''
 
 Resources:
   ECSService:
     Type: "AWS::ECS::Service"
-    DependsOn: LoadBalancer
+    DependsOn: LoadBalancerHttpListener
     Properties:
       Cluster:
         Fn::ImportValue:
@@ -71,10 +90,12 @@ Resources:
       AvailabilityZoneRebalancing: "ENABLED"
       NetworkConfiguration:
         AwsvpcConfiguration:
-          AssignPublicIp: "ENABLED"
-          SecurityGroups: 
-            - !Ref SecurityGroup
-          Subnets: !Ref SubnetIDs
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - !Ref NginxTaskSecurityGroup
+            - Fn::ImportValue:
+                Fn::Sub: "${Environment}-onyx-efs-ECSTasksSecurityGroup"
+          Subnets: !Ref PrivateSubnetIDs
       PlatformVersion: "LATEST"
       DeploymentConfiguration:
         MaximumPercent: 200
@@ -135,8 +156,16 @@ Resources:
               ContainerPath: /etc/nginx/conf.d
           VolumesFrom: []
           DependsOn:
-            - ContainerName: github-sync-container
+            - ContainerName: s3-sync-container
               Condition: SUCCESS
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - "wget -qO- http://localhost/api/health || exit 1"
+            Interval: 15
+            Timeout: 10
+            Retries: 5
+            StartPeriod: 30
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -147,21 +176,27 @@ Resources:
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: ecs
           SystemControls: []
-        - Name: github-sync-container
-          Image: curlimages/curl:latest
+        # Init container: copies nginx config files from S3 to the shared EFS
+        # volume before the nginx container starts. Uses the task's IAM role
+        # (ECSTaskRole) which has s3:GetObject on the config bucket.
+        - Name: s3-sync-container
+          Image: amazon/aws-cli:latest
           Cpu: 128
           MemoryReservation: 256
           PortMappings: []
           Essential: false
-          Command:
-            - sh
+          EntryPoint:
+            - /bin/sh
             - -c
-            - !Sub |
-              curl -L ${GitHubConfigUrl} -o /etc/nginx/conf.d/app.conf.template && 
-              curl -L ${GitHubRunScriptUrl} -o /etc/nginx/conf.d/run-nginx.sh && 
-              chmod 644 /etc/nginx/conf.d/app.conf.template && 
-              chmod 755 /etc/nginx/conf.d/run-nginx.sh && 
-              exit 0 || exit 1
+          Command:
+            - !Sub >-
+              aws s3 cp s3://${S3Bucket}/nginx/app.conf.template /etc/nginx/conf.d/app.conf.template
+              && aws s3 cp s3://${S3Bucket}/nginx/run-nginx.sh /etc/nginx/conf.d/run-nginx.sh
+              && chmod 644 /etc/nginx/conf.d/app.conf.template
+              && chmod 755 /etc/nginx/conf.d/run-nginx.sh
+          Environment:
+            - Name: AWS_DEFAULT_REGION
+              Value: !Ref AWS::Region
           MountPoints:
             - SourceVolume: efs-volume
               ContainerPath: /etc/nginx/conf.d
@@ -169,7 +204,7 @@ Resources:
           LogConfiguration:
             LogDriver: awslogs
             Options:
-              awslogs-group: !Sub /ecs/${Environment}-github-sync-configs-TaskDefinition
+              awslogs-group: !Sub /ecs/${Environment}-s3-sync-configs-TaskDefinition
               mode: non-blocking
               awslogs-create-group: "true"
               max-buffer-size: 25m
@@ -197,21 +232,47 @@ Resources:
       Memory: !Ref TaskMemory
       EnableFaultInjection: false 
 
-  SecurityGroup:
-    Type: "AWS::EC2::SecurityGroup"
+  # Internet-facing security group attached to the Application Load Balancer.
+  # Allows HTTP (80) and HTTPS (443) from anywhere. The HTTP listener redirects
+  # to HTTPS when a certificate is configured; otherwise it forwards directly.
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: !Sub "Security group for ${ServiceName}"
+      GroupDescription: !Sub "Internet-facing security group for the ${ServiceName} ALB"
+      GroupName: !Sub ${Environment}-alb-${ServiceName}
+      VpcId: !Ref VpcID
+      SecurityGroupIngress:
+        - FromPort: 80
+          ToPort: 80
+          IpProtocol: tcp
+          CidrIp: "0.0.0.0/0"
+        - FromPort: 80
+          ToPort: 80
+          IpProtocol: tcp
+          CidrIpv6: "::/0"
+        - FromPort: 443
+          ToPort: 443
+          IpProtocol: tcp
+          CidrIp: "0.0.0.0/0"
+        - FromPort: 443
+          ToPort: 443
+          IpProtocol: tcp
+          CidrIpv6: "::/0"
+
+  # Security group attached to the nginx ECS task.
+  # Allows inbound port 80 from the ALB only (ALB terminates TLS; the task
+  # always receives plain HTTP even when HTTPS is enabled end-to-end).
+  NginxTaskSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "Security group for the ${ServiceName} ECS task — ALB access only"
       GroupName: !Sub ${Environment}-ecs-${ServiceName}
       VpcId: !Ref VpcID
       SecurityGroupIngress:
         - FromPort: 80
           ToPort: 80
-          IpProtocol: "tcp"
-          CidrIp: "0.0.0.0/0"
-        - FromPort: 80
-          ToPort: 80
-          IpProtocol: "tcp"
-          CidrIpv6: "::/0"
+          IpProtocol: tcp
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
 
   ServiceDiscoveryService:
     Type: "AWS::ServiceDiscovery::Service"
@@ -229,20 +290,46 @@ Resources:
 
   LoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-    DependsOn: SecurityGroup
+    DependsOn: ALBSecurityGroup
     Properties:
       Type: application
       Scheme: internet-facing
-      Subnets: !Ref SubnetIDs
-      SecurityGroups: 
-        - !Ref SecurityGroup
+      Subnets: !Ref PublicSubnetIDs
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
 
-  LoadBalancerListener:
+  # HTTP listener — redirects to HTTPS when a certificate is configured,
+  # forwards directly to the target group when running HTTP-only.
+  LoadBalancerHttpListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
       LoadBalancerArn: !Ref LoadBalancer
       Port: 80
       Protocol: HTTP
+      DefaultActions:
+        - !If
+          - CreateHttpsListener
+          - Type: redirect
+            RedirectConfig:
+              Protocol: HTTPS
+              Port: "443"
+              StatusCode: HTTP_301
+          - Type: forward
+            TargetGroupArn: !Ref TargetGroup
+
+  # HTTPS listener — only created when CertificateArn is provided.
+  # Uses a modern TLS 1.2/1.3 security policy and terminates SSL at the ALB;
+  # the nginx task always receives plain HTTP on port 80.
+  LoadBalancerHttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: CreateHttpsListener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+      Certificates:
+        - CertificateArn: !Ref CertificateArn
       DefaultActions:
         - Type: forward
           TargetGroupArn: !Ref TargetGroup
@@ -282,7 +369,14 @@ Outputs:
   ServiceDiscoveryService:
     Value: !Ref "ServiceDiscoveryService"
   OutputOnyxLoadBalancerDNSName:
-    Description: LoadBalancer DNSName
+    Description: ALB DNS name (use this for HTTP access or as the CNAME target)
     Value: !GetAtt LoadBalancer.DNSName
     Export:
       Name: !Sub ${AWS::StackName}-OnyxLoadBalancerDNSName
+  OutputOnyxHttpUrl:
+    Description: HTTP endpoint (redirects to HTTPS when certificate is configured)
+    Value: !Sub "http://${LoadBalancer.DNSName}"
+  OutputOnyxHttpsUrl:
+    Description: HTTPS endpoint (only available when CertificateArn is provided)
+    Condition: CreateHttpsListener
+    Value: !Sub "https://${DomainName}"

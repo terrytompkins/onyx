@@ -1,0 +1,97 @@
+{
+  // -------------------------------------------------------------------------
+  // NAMING
+  // These values are used as prefixes and identifiers throughout the stack.
+  // OnyxNamespace: short identifier embedded in resource names (e.g. "onyx")
+  // Environment:   deployment stage label, used as the primary stack prefix
+  //                (e.g. "production", "staging", "dev")
+  // EFSName:       name tag for the Elastic File System resource
+  // -------------------------------------------------------------------------
+  "OnyxNamespace": "onyx",
+  "Environment": "production",
+  "EFSName": "onyx-efs",
+
+  // -------------------------------------------------------------------------
+  // AWS ACCOUNT & REGION
+  // AWSRegion:    the AWS region to deploy into (e.g. "us-east-2")
+  // AWSAccountID: your 12-digit AWS account number — used by deploy.sh to
+  //               construct Secrets Manager ARNs for the bootstrap step.
+  //               If left blank (""), deploy.sh will auto-detect it via
+  //               `aws sts get-caller-identity`.
+  //               Find it: AWS Console → top-right account menu, or run:
+  //               `aws sts get-caller-identity --query Account --output text`
+  // -------------------------------------------------------------------------
+  "AWSRegion": "us-east-2",
+  "AWSAccountID": "",
+
+  // -------------------------------------------------------------------------
+  // VPC & SUBNETS
+  // VpcID:          the ID of the existing corporate VPC to deploy into.
+  //                 Find it: AWS Console → VPC → Your VPCs, or run:
+  //                 `aws ec2 describe-vpcs --query 'Vpcs[*].[VpcId,Tags]'`
+  //
+  // PublicSubnetIDs:  comma-separated list of PUBLIC subnet IDs (no leading/
+  //                   trailing spaces). The Application Load Balancer (nginx)
+  //                   is placed here. REQUIREMENTS:
+  //                   - At least 2 subnets in DIFFERENT Availability Zones
+  //                     (ALB requires multi-AZ — single-subnet deploys fail)
+  //                   - Subnets must have "Auto-assign public IPv4" enabled
+  //                     OR an Internet Gateway route in their route table
+  //                   Find them: AWS Console → VPC → Subnets → filter by VPC,
+  //                   look for subnets with route to igw-*
+  //
+  // PrivateSubnetIDs: comma-separated list of PRIVATE subnet IDs. All ECS
+  //                   Fargate tasks (every service) are placed here.
+  //                   REQUIREMENTS:
+  //                   - At least 1 subnet (2 recommended for HA)
+  //                   - Subnets must have outbound internet access via a
+  //                     NAT Gateway (to pull Docker images, reach AWS APIs,
+  //                     and download ML models). Without NAT, tasks will fail
+  //                     to start.
+  //                   - NAT Gateway should be in one of the public subnets
+  //                     above, with a route in the private subnet route table
+  //                     pointing 0.0.0.0/0 → nat-*
+  //                   Find them: AWS Console → VPC → Subnets → filter by VPC,
+  //                   look for subnets with route to nat-*
+  //
+  // SubnetIDs:      legacy field retained for backward compatibility during
+  //                 the Phase 2 template migration. Set to the same value as
+  //                 PrivateSubnetIDs until all templates are updated.
+  // -------------------------------------------------------------------------
+  "VpcID": "YOUR_VPC_ID",
+  "PublicSubnetIDs": "YOUR_PUBLIC_SUBNET_ID1,YOUR_PUBLIC_SUBNET_ID2",
+  "PrivateSubnetIDs": "YOUR_PRIVATE_SUBNET_ID1,YOUR_PRIVATE_SUBNET_ID2",
+  "SubnetIDs": "YOUR_PRIVATE_SUBNET_ID1,YOUR_PRIVATE_SUBNET_ID2",
+
+  // -------------------------------------------------------------------------
+  // DOMAIN & SSL/TLS
+  // DomainName:      the fully-qualified domain name for the Onyx deployment
+  //                  (e.g. "onyx.example.com"). An ACM certificate will be
+  //                  issued for this domain and attached to the ALB HTTPS
+  //                  listener.
+  // ValidationMethod: how ACM proves you own the domain. "DNS" (recommended)
+  //                  adds a CNAME record; "EMAIL" sends an email to domain
+  //                  contacts. DNS validation is required for auto-renewal.
+  // HostedZoneId:    the Route 53 Hosted Zone ID for DomainName. If set,
+  //                  deploy.sh will automatically create a DNS A-record
+  //                  pointing to the ALB. Leave blank ("") to skip Route 53
+  //                  integration and manage DNS manually.
+  //                  Find it: AWS Console → Route 53 → Hosted Zones, or run:
+  //                  `aws route53 list-hosted-zones-by-name`
+  // -------------------------------------------------------------------------
+  "DomainName": "YOUR_DOMAIN e.g. onyx.example.com",
+  "ValidationMethod": "DNS",
+  "HostedZoneId": "",
+
+  // -------------------------------------------------------------------------
+  // ONYX APPLICATION IMAGE TAG
+  // OnyxImageTag: Docker image tag used for the three Onyx application images:
+  //   - onyxdotapp/onyx-backend:<tag>
+  //   - onyxdotapp/onyx-web-server:<tag>
+  //   - onyxdotapp/onyx-model-server:<tag>
+  // Use "latest" to always pull the newest upstream build, or pin to a
+  // specific release tag (e.g. "v0.12.0") for stability.
+  // To roll to a new version: update this value and run ./update.sh
+  // -------------------------------------------------------------------------
+  "OnyxImageTag": "latest"
+}

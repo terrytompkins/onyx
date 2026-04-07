@@ -8,10 +8,14 @@ Parameters:
     Default: production
   VpcID:
     Type: String
-    Default: vpc-0f230ca52bb04c722 
-  SubnetIDs:
+    Default: vpc-0f230ca52bb04c722
+  PrivateSubnetIDs:
     Type: CommaDelimitedList
-    Description: "Comma-delimited list of at least two subnet IDs in different Availability Zones"
+    Description: >
+      Comma-delimited list of private subnet IDs where EFS mount targets will be
+      created. These must be the same private subnets used by ECS Fargate tasks so
+      that tasks can reach the mount targets over NFS (port 2049). Requires at least
+      two subnets in different Availability Zones for high availability.
 
 Resources:
 
@@ -76,7 +80,7 @@ Resources:
     Type: AWS::EFS::MountTarget
     Properties:
       FileSystemId: !Ref OnyxEfs
-      SubnetId: !Select [0, !Ref SubnetIDs]
+      SubnetId: !Select [0, !Ref PrivateSubnetIDs]
       SecurityGroups:
         - !Ref EFSSecurityGroupMountTargets
 
@@ -85,10 +89,28 @@ Resources:
     Type: AWS::EFS::MountTarget
     Properties:
       FileSystemId: !Ref OnyxEfs
-      SubnetId: !Select [1, !Ref SubnetIDs]
+      SubnetId: !Select [1, !Ref PrivateSubnetIDs]
       SecurityGroups:
         - !Ref EFSSecurityGroupMountTargets
 
+  # Shared identity security group attached to every Onyx ECS Fargate task.
+  # Contains no ingress rules of its own — it exists so that per-service security
+  # groups can reference it as a source ("only allow traffic from Onyx tasks").
+  # Exported so that the cluster template and all service templates can import it.
+  ECSTasksSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Shared identity SG attached to every Onyx ECS Fargate task
+      GroupName: !Sub ${Environment}-onyx-ecs-tasks
+      VpcId: !Ref VpcID
+      Tags:
+        - Key: app
+          Value: onyx
+        - Key: env
+          Value: !Ref Environment
+
+  # NFS (port 2049) is restricted to traffic from Onyx ECS tasks only.
+  # Only containers that have ECSTasksSecurityGroup attached can reach the mount targets.
   EFSSecurityGroupMountTargets:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -98,9 +120,14 @@ Resources:
         - IpProtocol: tcp
           FromPort: 2049
           ToPort: 2049
-          CidrIp: 0.0.0.0/0
+          SourceSecurityGroupId: !Ref ECSTasksSecurityGroup
 
 Outputs:
+  OutputECSTasksSecurityGroup:
+    Description: Shared identity SG attached to every Onyx ECS task
+    Value: !Ref ECSTasksSecurityGroup
+    Export:
+      Name: !Sub ${AWS::StackName}-ECSTasksSecurityGroup
   OutputOnyxEfsId:
     Description: Onyx Filesystem Id
     Value: !Ref OnyxEfs

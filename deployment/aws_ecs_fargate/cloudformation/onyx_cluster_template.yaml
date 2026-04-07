@@ -11,6 +11,18 @@ Parameters:
   VpcID:
     Type: String
     Default: vpc-098cfa79d637dabff
+  PublicSubnetIDs:
+    Type: CommaDelimitedList
+    Description: >
+      Comma-delimited list of public subnet IDs used by the Application Load Balancer
+      (nginx). Must span at least two Availability Zones. These subnets should have
+      internet-gateway routes. ECS tasks do NOT run here.
+  PrivateSubnetIDs:
+    Type: CommaDelimitedList
+    Description: >
+      Comma-delimited list of private subnet IDs where all ECS Fargate tasks run.
+      These subnets must have outbound internet access via a NAT Gateway so tasks
+      can pull Docker images and reach AWS APIs.
 
 Resources:
   ECSCluster:
@@ -131,6 +143,16 @@ Resources:
                   - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Environment}/onyx/user-auth-secret-*
 
 Outputs:
+  OutputPublicSubnetIDs:
+    Description: Public subnet IDs for the Application Load Balancer
+    Value: !Join [",", !Ref PublicSubnetIDs]
+    Export:
+      Name: !Sub ${AWS::StackName}-PublicSubnetIDs
+  OutputPrivateSubnetIDs:
+    Description: Private subnet IDs for ECS Fargate tasks
+    Value: !Join [",", !Ref PrivateSubnetIDs]
+    Export:
+      Name: !Sub ${AWS::StackName}-PrivateSubnetIDs
   OutputEcsCluster:
     Description: Onyx ECS Cluster
     Value: !Ref ECSCluster

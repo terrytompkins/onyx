@@ -3,9 +3,9 @@ Parameters:
   Environment:
     Type: String
     Default: production
-  SubnetIDs:
+  PrivateSubnetIDs:
     Type: CommaDelimitedList
-    Description: "Comma-delimited list of at least two subnet IDs in different Availability Zones"
+    Description: "Comma-delimited list of private subnet IDs where ECS tasks run (no public IPs)"
   VpcID:
     Type: String
     Default: vpc-098cfa79d637dabff
@@ -41,10 +41,12 @@ Resources:
       AvailabilityZoneRebalancing: DISABLED
       NetworkConfiguration:
         AwsvpcConfiguration:
-          AssignPublicIp: ENABLED
+          AssignPublicIp: DISABLED
           SecurityGroups:
             - !Ref SecurityGroup
-          Subnets: !Ref SubnetIDs
+            - Fn::ImportValue:
+                Fn::Sub: "${Environment}-onyx-efs-ECSTasksSecurityGroup"
+          Subnets: !Ref PrivateSubnetIDs
       PlatformVersion: LATEST
       DeploymentConfiguration:
         MaximumPercent: 100
@@ -77,17 +79,9 @@ Resources:
         - FromPort: 5432
           ToPort: 5432
           IpProtocol: tcp
-          CidrIp: 0.0.0.0/0
-        - FromPort: 5432
-          ToPort: 5432
-          IpProtocol: tcp
-          CidrIpv6: "::/0"
-        - FromPort: 2049
-          ToPort: 2049
-          IpProtocol: tcp
           SourceSecurityGroupId:
             Fn::ImportValue:
-              Fn::Sub: "${Environment}-onyx-efs-EFSSecurityGroupMountTargets"
+              Fn::Sub: "${Environment}-onyx-efs-ECSTasksSecurityGroup"
 
   ServiceDiscoveryService:
     Type: "AWS::ServiceDiscovery::Service"
@@ -166,6 +160,14 @@ Resources:
               ContainerPath: /var/lib/postgresql
               ReadOnly: false
           User: "1000"
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - "pg_isready -U postgres || exit 1"
+            Interval: 10
+            Timeout: 5
+            Retries: 5
+            StartPeriod: 30
           LogConfiguration:
             LogDriver: awslogs
             Options:
