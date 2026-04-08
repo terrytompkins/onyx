@@ -66,3 +66,6 @@ node_modules
 
 # plans
 plans/
+
+# Added context for LLMs
+onyx-llm-context/
