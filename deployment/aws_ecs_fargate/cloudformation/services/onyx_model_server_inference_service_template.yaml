@@ -3,9 +3,9 @@ Description: CloudFormation template for Onyx Model Server Inference TaskDefinit
 Parameters:
   Environment:
     Type: String
-  SubnetIDs:
+  PrivateSubnetIDs:
     Type: CommaDelimitedList
-    Description: "Comma-delimited list of at least two subnet IDs in different Availability Zones"
+    Description: "Comma-delimited list of private subnet IDs where ECS tasks run (no public IPs)"
   VpcID:
     Type: String
     Default: vpc-098cfa79d637dabff
@@ -21,6 +21,14 @@ Parameters:
   TaskDesiredCount:
     Type: Number
     Default: 1
+  OnyxImageTag:
+    Type: String
+    Default: "latest"
+    Description: >
+      Docker image tag for the Onyx model server image
+      (onyxdotapp/onyx-model-server:<tag>). Use "latest" for the newest build
+      or a specific release tag (e.g. "v0.12.0") for a pinned version.
+      Update via ./update.sh after changing this value.
 
 Resources:
 
@@ -41,10 +49,12 @@ Resources:
       AvailabilityZoneRebalancing: ENABLED
       NetworkConfiguration:
         AwsvpcConfiguration:
-          AssignPublicIp: ENABLED
+          AssignPublicIp: DISABLED
           SecurityGroups:
-            - Ref: SecurityGroup
-          Subnets: !Ref SubnetIDs
+            - !Ref SecurityGroup
+            - Fn::ImportValue:
+                Fn::Sub: "${Environment}-onyx-efs-ECSTasksSecurityGroup"
+          Subnets: !Ref PrivateSubnetIDs
       PlatformVersion: LATEST
       DeploymentConfiguration:
         MaximumPercent: 200
@@ -77,11 +87,9 @@ Resources:
         - FromPort: 9000
           ToPort: 9000
           IpProtocol: tcp
-          CidrIp: 0.0.0.0/0
-        - FromPort: 9000
-          ToPort: 9000
-          IpProtocol: tcp
-          CidrIpv6: "::/0"
+          SourceSecurityGroupId:
+            Fn::ImportValue:
+              Fn::Sub: "${Environment}-onyx-efs-ECSTasksSecurityGroup"
 
   ServiceDiscoveryService:
     Type: "AWS::ServiceDiscovery::Service"
@@ -117,7 +125,7 @@ Resources:
         OperatingSystemFamily: LINUX
       ContainerDefinitions:
         - Name: onyx-model-server-inference
-          Image: onyxdotapp/onyx-model-server:latest
+          Image: !Sub "onyxdotapp/onyx-model-server:${OnyxImageTag}"
           Cpu: 0
           Essential: true
           Command:
@@ -135,6 +143,14 @@ Resources:
           Environment:
             - Name: LOG_LEVEL
               Value: info
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - "wget -qO- http://localhost:9000/api/health || exit 1"
+            Interval: 15
+            Timeout: 10
+            Retries: 5
+            StartPeriod: 120
           MountPoints:
             - SourceVolume: efs-volume
               ContainerPath: /app/.cache/huggingface/
