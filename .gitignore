@@ -1,3 +1,6 @@
+# claude code
+.claude/worktrees/
+
 # editors
 .vscode/*
 !/.vscode/env_template.txt
