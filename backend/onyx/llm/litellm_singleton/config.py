@@ -13,10 +13,10 @@ def configure_litellm_settings() -> None:
     # If a user configures a different model and it doesn't support all the same
     # parameters like frequency and presence, just ignore them
     litellm.drop_params = True
-    litellm.telemetry = False
+    litellm.telemetry = False  # ty: ignore[invalid-assignment]
     litellm.modify_params = True
     litellm.add_function_to_prompt = False
-    litellm.suppress_debug_info = True
+    litellm.suppress_debug_info = True  # ty: ignore[invalid-assignment]
 
     # Disable SSL verification when SSL_VERIFY=false (e.g. corporate TLS inspection)
     if os.environ.get("SSL_VERIFY", "true").lower() in ("false", "0"):

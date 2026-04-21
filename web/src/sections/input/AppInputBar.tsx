@@ -44,8 +44,8 @@ import {
   SvgGlobe,
   SvgHourglass,
   SvgMicrophone,
+  SvgPaperclip,
   SvgPlus,
-  SvgPlusCircle,
   SvgSearch,
   SvgStop,
   SvgX,
@@ -86,6 +86,7 @@ export interface AppInputBarProps {
   deepResearchEnabled: boolean;
   setPresentingDocument?: (document: MinimalOnyxDocument) => void;
   toggleDeepResearch: () => void;
+  isMultiModelActive?: boolean;
   disabled: boolean;
   ref?: React.Ref<AppInputBarHandle>;
   // Side panel tab reading
@@ -109,6 +110,7 @@ const AppInputBar = React.memo(
     llmManager,
     deepResearchEnabled,
     toggleDeepResearch,
+    isMultiModelActive,
     setPresentingDocument,
     disabled,
     ref,
@@ -507,7 +509,7 @@ const AppInputBar = React.memo(
             trigger={(open) => (
               <Button
                 disabled={disabled}
-                icon={SvgPlusCircle}
+                icon={SvgPaperclip}
                 tooltip="Attach Files"
                 interaction={open ? "hover" : "rest"}
                 prominence="tertiary"
@@ -554,12 +556,17 @@ const AppInputBar = React.memo(
             ) : (
               showDeepResearch && (
                 <SelectButton
-                  disabled={disabled}
+                  disabled={disabled || isMultiModelActive}
                   variant="select-light"
                   icon={SvgHourglass}
                   onClick={toggleDeepResearch}
                   state={deepResearchEnabled ? "selected" : "empty"}
                   foldable={!deepResearchEnabled}
+                  tooltip={
+                    isMultiModelActive
+                      ? "Deep Research is disabled in multi-model mode"
+                      : undefined
+                  }
                 >
                   Deep Research
                 </SelectButton>

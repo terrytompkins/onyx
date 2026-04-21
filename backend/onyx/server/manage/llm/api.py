@@ -40,6 +40,8 @@ from onyx.db.models import User
 from onyx.db.persona import user_can_access_persona
 from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.error_handling.exceptions import OnyxError
+from onyx.llm.constants import PROVIDER_DISPLAY_NAMES
+from onyx.llm.constants import WELL_KNOWN_PROVIDER_NAMES
 from onyx.llm.factory import get_default_llm
 from onyx.llm.factory import get_llm
 from onyx.llm.factory import get_max_input_tokens_from_llm_provider
@@ -60,6 +62,7 @@ from onyx.server.manage.llm.models import BedrockFinalModelResponse
 from onyx.server.manage.llm.models import BedrockModelsRequest
 from onyx.server.manage.llm.models import BifrostFinalModelResponse
 from onyx.server.manage.llm.models import BifrostModelsRequest
+from onyx.server.manage.llm.models import CustomProviderOption
 from onyx.server.manage.llm.models import DefaultModel
 from onyx.server.manage.llm.models import LitellmFinalModelResponse
 from onyx.server.manage.llm.models import LitellmModelDetails
@@ -106,6 +109,43 @@ def _mask_string(value: str) -> str:
     if len(value) <= 8:
         return "****"
     return value[:4] + "****" + value[-4:]
+
+
+def _resolve_api_key(
+    api_key: str | None,
+    provider_name: str | None,
+    api_base: str | None,
+    db_session: Session,
+) -> str | None:
+    """Return the real API key for model-fetch endpoints.
+
+    When editing an existing provider the form value is masked (e.g.
+    ``sk-a****b1c2``).  If *provider_name* is supplied we can look up
+    the unmasked key from the database so the external request succeeds.
+
+    The stored key is only returned when the request's *api_base*
+    matches the value stored in the database.
+    """
+    if not provider_name:
+        return api_key
+
+    existing_provider = fetch_existing_llm_provider(
+        name=provider_name, db_session=db_session
+    )
+    if existing_provider and existing_provider.api_key:
+        # Normalise both URLs before comparing so trailing-slash
+        # differences don't cause a false mismatch.
+        stored_base = (existing_provider.api_base or "").strip().rstrip("/")
+        request_base = (api_base or "").strip().rstrip("/")
+        if stored_base != request_base:
+            return api_key
+
+        stored_key = existing_provider.api_key.get_value(apply_mask=False)
+        # Only resolve when the incoming value is the masked form of the
+        # stored key — i.e. the user hasn't typed a new key.
+        if api_key and api_key == _mask_string(stored_key):
+            return stored_key
+    return api_key
 
 
 def _sync_fetched_models(
@@ -248,6 +288,29 @@ def _validate_llm_provider_change(
             OnyxErrorCode.VALIDATION_ERROR,
             "API base and/or custom config cannot be changed without changing the API key",
         )
+
+
+@admin_router.get("/custom-provider-names")
+def fetch_custom_provider_names(
+    _: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
+) -> list[CustomProviderOption]:
+    """Returns the sorted list of LiteLLM provider names that can be used
+    with the custom provider modal (i.e. everything that is not already
+    covered by a well-known provider modal)."""
+    import litellm
+
+    well_known = {p.value for p in WELL_KNOWN_PROVIDER_NAMES}
+    return sorted(
+        (
+            CustomProviderOption(
+                value=name,
+                label=PROVIDER_DISPLAY_NAMES.get(name, name.replace("_", " ").title()),
+            )
+            for name in litellm.models_by_provider.keys()
+            if name not in well_known
+        ),
+        key=lambda o: o.label.lower(),
+    )
 
 
 @admin_router.get("/built-in/options")
@@ -1148,16 +1211,17 @@ def get_ollama_available_models(
     return sorted_results
 
 
-def _get_openrouter_models_response(api_base: str, api_key: str) -> dict:
+def _get_openrouter_models_response(api_base: str, api_key: str | None) -> dict:
     """Perform GET to OpenRouter /models and return parsed JSON."""
     cleaned_api_base = api_base.strip().rstrip("/")
     url = f"{cleaned_api_base}/models"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
+    headers: dict[str, str] = {
         # Optional headers recommended by OpenRouter for attribution
         "HTTP-Referer": "https://onyx.app",
         "X-Title": "Onyx",
     }
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     try:
         response = httpx.get(url, headers=headers, timeout=10.0)
         response.raise_for_status()
@@ -1180,8 +1244,12 @@ def get_openrouter_available_models(
     Parses id, name (display), context_length, and architecture.input_modalities.
     """
 
+    api_key = _resolve_api_key(
+        request.api_key, request.provider_name, request.api_base, db_session
+    )
+
     response_json = _get_openrouter_models_response(
-        api_base=request.api_base, api_key=request.api_key
+        api_base=request.api_base, api_key=api_key
     )
 
     data = response_json.get("data", [])
@@ -1274,13 +1342,18 @@ def get_lm_studio_available_models(
 
     # If provider_name is given and the api_key hasn't been changed by the user,
     # fall back to the stored API key from the database (the form value is masked).
+    # Only do so when the api_base matches what is stored.
     api_key = request.api_key
     if request.provider_name and not request.api_key_changed:
         existing_provider = fetch_existing_llm_provider(
             name=request.provider_name, db_session=db_session
         )
         if existing_provider and existing_provider.custom_config:
-            api_key = existing_provider.custom_config.get(LM_STUDIO_API_KEY_CONFIG_KEY)
+            stored_base = (existing_provider.api_base or "").strip().rstrip("/")
+            if stored_base == cleaned_api_base:
+                api_key = existing_provider.custom_config.get(
+                    LM_STUDIO_API_KEY_CONFIG_KEY
+                )
 
     url = f"{cleaned_api_base}/api/v1/models"
     headers: dict[str, str] = {}
@@ -1364,8 +1437,12 @@ def get_litellm_available_models(
     db_session: Session = Depends(get_session),
 ) -> list[LitellmFinalModelResponse]:
     """Fetch available models from Litellm proxy /v1/models endpoint."""
+    api_key = _resolve_api_key(
+        request.api_key, request.provider_name, request.api_base, db_session
+    )
+
     response_json = _get_litellm_models_response(
-        api_key=request.api_key, api_base=request.api_base
+        api_key=api_key, api_base=request.api_base
     )
 
     models = response_json.get("data", [])
@@ -1422,7 +1499,7 @@ def get_litellm_available_models(
     return sorted_results
 
 
-def _get_litellm_models_response(api_key: str, api_base: str) -> dict:
+def _get_litellm_models_response(api_key: str | None, api_base: str) -> dict:
     """Perform GET to Litellm proxy /api/v1/models and return parsed JSON."""
     cleaned_api_base = api_base.strip().rstrip("/")
     url = f"{cleaned_api_base}/v1/models"
@@ -1497,8 +1574,12 @@ def get_bifrost_available_models(
     db_session: Session = Depends(get_session),
 ) -> list[BifrostFinalModelResponse]:
     """Fetch available models from Bifrost gateway /v1/models endpoint."""
+    api_key = _resolve_api_key(
+        request.api_key, request.provider_name, request.api_base, db_session
+    )
+
     response_json = _get_bifrost_models_response(
-        api_base=request.api_base, api_key=request.api_key
+        api_base=request.api_base, api_key=api_key
     )
 
     models = response_json.get("data", [])
@@ -1587,8 +1668,12 @@ def get_openai_compatible_server_available_models(
     db_session: Session = Depends(get_session),
 ) -> list[OpenAICompatibleFinalModelResponse]:
     """Fetch available models from a generic OpenAI-compatible /v1/models endpoint."""
+    api_key = _resolve_api_key(
+        request.api_key, request.provider_name, request.api_base, db_session
+    )
+
     response_json = _get_openai_compatible_server_response(
-        api_base=request.api_base, api_key=request.api_key
+        api_base=request.api_base, api_key=api_key
     )
 
     models = response_json.get("data", [])
@@ -1648,7 +1733,7 @@ def get_openai_compatible_server_available_models(
                 )
                 for r in sorted_results
             ],
-            source_label="OpenAI Compatible",
+            source_label="OpenAI-Compatible",
         )
 
     return sorted_results
@@ -1667,6 +1752,6 @@ def _get_openai_compatible_server_response(
 
     return _get_openai_compatible_models_response(
         url=url,
-        source_name="OpenAI Compatible",
+        source_name="OpenAI-Compatible",
         api_key=api_key,
     )

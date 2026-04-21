@@ -4,7 +4,7 @@ import { cn, noProp } from "@/lib/utils";
 import { SvgPlus, SvgX } from "@opal/icons";
 import { Hoverable } from "@opal/core";
 import IconButton from "@/refresh-components/buttons/IconButton";
-import SimpleTooltip from "@/refresh-components/SimpleTooltip";
+import { Tooltip } from "@opal/components";
 import Text from "@/refresh-components/texts/Text";
 import { useImageDropzone } from "@/hooks/useImageDropzone";
 
@@ -173,7 +173,7 @@ export default function InputImage({
   const dropzoneProps = onDrop ? getRootProps() : {};
 
   return (
-    <Hoverable.Root group="inputImage" widthVariant="fit">
+    <Hoverable.Root group="inputImage" width="fit">
       <div
         className={cn("relative", className)}
         style={{ width: size, height: size }}
@@ -234,7 +234,7 @@ export default function InputImage({
                   )}
                 >
                   <div className="pointer-events-auto">
-                    <SimpleTooltip tooltip="Edit" side="top">
+                    <Tooltip tooltip="Edit" side="top">
                       <div
                         className={cn(
                           "flex items-center justify-center",
@@ -248,7 +248,7 @@ export default function InputImage({
                           Edit
                         </Text>
                       </div>
-                    </SimpleTooltip>
+                    </Tooltip>
                   </div>
                 </div>
               </Hoverable.Item>

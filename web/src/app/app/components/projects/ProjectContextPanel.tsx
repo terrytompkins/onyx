@@ -2,12 +2,11 @@
 
 import React, { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
-import Separator from "@/refresh-components/Separator";
 import { useProjectsContext } from "@/providers/ProjectsContext";
 import FilePickerPopover from "@/refresh-components/popovers/FilePickerPopover";
 import type { ProjectFile } from "../../projects/projectsService";
 import { MinimalOnyxDocument } from "@/lib/search/interfaces";
-import { Button } from "@opal/components";
+import { Button, Divider } from "@opal/components";
 
 import AddInstructionModal from "@/components/modals/AddInstructionModal";
 import UserFilesModal from "@/components/modals/UserFilesModal";
@@ -134,7 +133,7 @@ export default function ProjectContextPanel({
       <div className="flex flex-col gap-6 w-full max-w-[var(--app-page-main-content-width)] mx-auto p-4 pt-14 pb-6">
         <div className="flex flex-col gap-1 text-text-04">
           <SvgFolderOpen className="h-8 w-8 text-text-04" />
-          <Hoverable.Root group="projectName" widthVariant="fit">
+          <Hoverable.Root group="projectName" width="fit">
             <div className="flex items-center gap-2">
               {isEditingName ? (
                 <ButtonRenaming
@@ -170,7 +169,7 @@ export default function ProjectContextPanel({
           </Hoverable.Root>
         </div>
 
-        <Separator className="py-0" />
+        <Divider paddingPerpendicular="fit" />
         <div className="flex flex-row gap-2 justify-between">
           <div className="min-w-0 flex-1">
             <Text as="p" headingH3 text04>

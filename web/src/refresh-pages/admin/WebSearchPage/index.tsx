@@ -7,6 +7,7 @@ import Text from "@/refresh-components/texts/Text";
 import { Section } from "@/layouts/general-layouts";
 import * as SettingsLayouts from "@/layouts/settings-layouts";
 import { Content, Card } from "@opal/layouts";
+import { markdown } from "@opal/utils";
 import useSWR from "swr";
 import { errorHandlingFetcher, FetchError } from "@/lib/fetcher";
 import { SWR_KEYS } from "@/lib/swr-keys";
@@ -19,11 +20,11 @@ import {
   SvgArrowRightCircle,
   SvgCheckSquare,
   SvgGlobe,
-  SvgOnyxLogo,
   SvgSettings,
   SvgSlash,
   SvgUnplug,
 } from "@opal/icons";
+import { SvgOnyxLogo } from "@opal/logos";
 import { Button, SelectCard } from "@opal/components";
 import { Hoverable } from "@opal/core";
 import { ADMIN_ROUTES } from "@/lib/admin-routes";
@@ -146,7 +147,7 @@ function WebSearchDisconnectModal({
   return (
     <ConfirmationModalLayout
       icon={SvgUnplug}
-      title={`Disconnect ${disconnectTarget.label}`}
+      title={markdown(`Disconnect *${disconnectTarget.label}*`)}
       description="This will remove the stored credentials for this provider."
       onClose={onClose}
       submit={
@@ -276,12 +277,16 @@ function ProviderCard({
         }
       >
         <Card.Header
-          sizePreset="main-ui"
-          variant="section"
-          icon={icon}
-          title={title}
-          description={description}
-          rightChildren={
+          headerChildren={
+            <Content
+              sizePreset="main-ui"
+              variant="section"
+              icon={icon}
+              title={title}
+              description={description}
+            />
+          }
+          topRightChildren={
             isDisconnected && onConnect ? (
               <Button
                 prominence="tertiary"

@@ -57,9 +57,9 @@ const containerSizeVariants: Record<
 // A named scale of width/height presets that map to Tailwind width/height utility classes.
 //
 // Consumers (for width):
-//   - Interactive.Container  (widthVariant)
+//   - Interactive.Container  (width)
 //   - Button                 (width)
-//   - Content                (widthVariant)
+//   - Content                (width)
 // ---------------------------------------------------------------------------
 
 /**
@@ -96,17 +96,35 @@ const heightVariants: Record<ExtremaSizeVariants, string> = {
 // Shared padding and rounding scales for card components (Card, SelectCard).
 //
 // Consumers:
-//   - Card          (paddingVariant, roundingVariant)
-//   - SelectCard    (paddingVariant, roundingVariant)
+//   - Card          (padding, rounding)
+//   - SelectCard    (padding, rounding)
 // ---------------------------------------------------------------------------
 
-const cardPaddingVariants: Record<PaddingVariants, string> = {
+const paddingVariants: Record<PaddingVariants, string> = {
   lg: "p-6",
   md: "p-4",
   sm: "p-2",
   xs: "p-1",
   "2xs": "p-0.5",
   fit: "p-0",
+};
+
+const paddingXVariants: Record<PaddingVariants, string> = {
+  lg: "px-6",
+  md: "px-4",
+  sm: "px-2",
+  xs: "px-1",
+  "2xs": "px-0.5",
+  fit: "px-0",
+};
+
+const paddingYVariants: Record<PaddingVariants, string> = {
+  lg: "py-6",
+  md: "py-4",
+  sm: "py-2",
+  xs: "py-1",
+  "2xs": "py-0.5",
+  fit: "py-0",
 };
 
 const cardRoundingVariants: Record<RoundingVariants, string> = {
@@ -116,14 +134,32 @@ const cardRoundingVariants: Record<RoundingVariants, string> = {
   xs: "rounded-04",
 };
 
+const cardTopRoundingVariants: Record<RoundingVariants, string> = {
+  lg: "rounded-t-16",
+  md: "rounded-t-12",
+  sm: "rounded-t-08",
+  xs: "rounded-t-04",
+};
+
+const cardBottomRoundingVariants: Record<RoundingVariants, string> = {
+  lg: "rounded-b-16",
+  md: "rounded-b-12",
+  sm: "rounded-b-08",
+  xs: "rounded-b-04",
+};
+
 export {
   type ExtremaSizeVariants,
   type ContainerSizeVariants,
   type OverridableExtremaSizeVariants,
   type SizeVariants,
   containerSizeVariants,
-  cardPaddingVariants,
+  paddingVariants,
+  paddingXVariants,
+  paddingYVariants,
   cardRoundingVariants,
+  cardTopRoundingVariants,
+  cardBottomRoundingVariants,
   widthVariants,
   heightVariants,
 };

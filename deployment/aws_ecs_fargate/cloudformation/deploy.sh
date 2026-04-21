@@ -301,14 +301,29 @@ deploy_stack() {
   local temp_params_file
   temp_params_file=$(create_parameters_from_json "$template_file" "$extra_params")
 
+  # Helpful context when templates declare SubnetIDs
+  if grep -q "SubnetIDs" "$template_file"; then
+    local subnet_ids
+    subnet_ids=$(remove_comments "$CONFIG_FILE" | jq -r '.SubnetIDs // empty')
+    if [ -n "$subnet_ids" ]; then
+      echo "  Using SubnetIDs from config: $subnet_ids"
+    else
+      echo "  Warning: SubnetIDs not found in config but this template references SubnetIDs."
+    fi
+  fi
+
   echo "  Deploying..."
-  aws cloudformation deploy \
+  if ! aws cloudformation deploy \
     --stack-name "$stack_name" \
     --template-file "$template_file" \
     --parameter-overrides "file://$temp_params_file" \
     --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
     --region "$AWS_REGION" \
-    --no-cli-auto-prompt
+    --no-cli-auto-prompt; then
+    rm -f "$temp_params_file"
+    echo "Error: Deployment failed for $stack_name. Exiting."
+    exit 1
+  fi
 
   rm -f "$temp_params_file"
   echo "  [✓] Deployed: $stack_name"
