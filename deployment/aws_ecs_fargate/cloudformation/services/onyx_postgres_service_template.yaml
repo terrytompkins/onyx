@@ -3,9 +3,9 @@ Parameters:
   Environment:
     Type: String
     Default: production
-  PrivateSubnetIDs:
+  SubnetIDs:
     Type: CommaDelimitedList
-    Description: "Comma-delimited list of private subnet IDs where ECS tasks run (no public IPs)"
+    Description: "Comma-delimited list of at least two subnet IDs in different Availability Zones"
   VpcID:
     Type: String
     Default: vpc-098cfa79d637dabff
@@ -41,12 +41,10 @@ Resources:
       AvailabilityZoneRebalancing: DISABLED
       NetworkConfiguration:
         AwsvpcConfiguration:
-          AssignPublicIp: DISABLED
+          AssignPublicIp: ENABLED
           SecurityGroups:
             - !Ref SecurityGroup
-            - Fn::ImportValue:
-                Fn::Sub: "${Environment}-onyx-efs-ECSTasksSecurityGroup"
-          Subnets: !Ref PrivateSubnetIDs
+          Subnets: !Ref SubnetIDs
       PlatformVersion: LATEST
       DeploymentConfiguration:
         MaximumPercent: 100
@@ -79,9 +77,11 @@ Resources:
         - FromPort: 5432
           ToPort: 5432
           IpProtocol: tcp
-          SourceSecurityGroupId:
-            Fn::ImportValue:
-              Fn::Sub: "${Environment}-onyx-efs-ECSTasksSecurityGroup"
+          CidrIp: 0.0.0.0/0
+        - FromPort: 5432
+          ToPort: 5432
+          IpProtocol: tcp
+          CidrIpv6: "::/0"
 
   ServiceDiscoveryService:
     Type: "AWS::ServiceDiscovery::Service"
@@ -123,6 +123,7 @@ Resources:
                 Fn::Sub: "${Environment}-onyx-efs-OnyxEfsId"
             RootDirectory: "/"
             TransitEncryption: ENABLED
+            # Omit IAM here—same pattern as Vespa services. IAM ENABLED requires an EFS file-system policy that allows this task role; without it mounts often fail.
             AuthorizationConfig:
               AccessPointId:
                 Fn::ImportValue:
@@ -133,41 +134,27 @@ Resources:
           Cpu: 0
           Essential: true
           StopTimeout: 30
-          Command:
-            - "-c"
-            - "max_connections=250"
+          # Omit Command so the image keeps docker-entrypoint.sh + default CMD (`postgres`). Tune with ALTER SYSTEM after first good deploy if needed (e.g. max_connections).
           PortMappings:
             - Name: postgres
               ContainerPort: 5432
-              HostPort: 5432
               Protocol: tcp
-              AppProtocol: http
           Environment:
             - Name: POSTGRES_USER
               Value: postgres
-            - Name: PGSSLMODE
-              Value: require
             - Name: POSTGRES_DB
               Value: postgres
           Secrets:
             - Name: POSTGRES_PASSWORD
-              ValueFrom: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Environment}/postgres/user/password
+              ValueFrom:
+                Fn::ImportValue:
+                  Fn::Sub: "${Environment}-onyx-cluster-PostgresPasswordEcsValueFrom"
+          # Single mount: the EFS access point roots at postgres data; mounting the same
+          # volume twice (incl. parent /var/lib/postgresql) overlaps paths and breaks PG init.
           MountPoints:
             - SourceVolume: efs-volume-data
               ContainerPath: /var/lib/postgresql/data
               ReadOnly: false
-            - SourceVolume: efs-volume-data
-              ContainerPath: /var/lib/postgresql
-              ReadOnly: false
-          User: "1000"
-          HealthCheck:
-            Command:
-              - CMD-SHELL
-              - "pg_isready -U postgres || exit 1"
-            Interval: 10
-            Timeout: 5
-            Retries: 5
-            StartPeriod: 30
           LogConfiguration:
             LogDriver: awslogs
             Options:

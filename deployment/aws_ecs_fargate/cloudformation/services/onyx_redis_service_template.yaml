@@ -3,9 +3,9 @@ Description: CloudFormation template for Onyx Redis TaskDefinition
 Parameters:
   Environment:
     Type: String
-  PrivateSubnetIDs:
+  SubnetIDs:
     Type: CommaDelimitedList
-    Description: "Comma-delimited list of private subnet IDs where ECS tasks run (no public IPs)"
+    Description: "Comma-delimited list of at least two subnet IDs in different Availability Zones"
   VpcID:
     Type: String
     Default: vpc-098cfa79d637dabff
@@ -41,12 +41,10 @@ Resources:
       AvailabilityZoneRebalancing: ENABLED
       NetworkConfiguration:
         AwsvpcConfiguration:
-          AssignPublicIp: DISABLED
+          AssignPublicIp: ENABLED
           SecurityGroups:
-            - !Ref SecurityGroup
-            - Fn::ImportValue:
-                Fn::Sub: "${Environment}-onyx-efs-ECSTasksSecurityGroup"
-          Subnets: !Ref PrivateSubnetIDs
+            - Ref: SecurityGroup
+          Subnets: !Ref SubnetIDs
       PlatformVersion: LATEST
       DeploymentConfiguration:
         MaximumPercent: 200
@@ -79,9 +77,11 @@ Resources:
         - FromPort: 6379
           ToPort: 6379
           IpProtocol: tcp
-          SourceSecurityGroupId:
-            Fn::ImportValue:
-              Fn::Sub: "${Environment}-onyx-efs-ECSTasksSecurityGroup"
+          CidrIp: 0.0.0.0/0
+        - FromPort: 6379
+          ToPort: 6379
+          IpProtocol: tcp
+          CidrIpv6: "::/0"
 
   ServiceDiscoveryService:
     Type: "AWS::ServiceDiscovery::Service"
@@ -126,14 +126,6 @@ Resources:
             - "\"\""
             - "--appendonly"
             - "no"
-          HealthCheck:
-            Command:
-              - CMD-SHELL
-              - "redis-cli ping || exit 1"
-            Interval: 10
-            Timeout: 5
-            Retries: 5
-            StartPeriod: 15
           PortMappings:
             - Name: redis_port
               ContainerPort: 6379

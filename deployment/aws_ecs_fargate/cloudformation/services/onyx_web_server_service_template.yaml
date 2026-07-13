@@ -3,9 +3,9 @@ Description: CloudFormation template for Onyx Web Server TaskDefinition
 Parameters:
   Environment:
     Type: String
-  PrivateSubnetIDs:
+  SubnetIDs:
     Type: CommaDelimitedList
-    Description: "Comma-delimited list of private subnet IDs where ECS tasks run (no public IPs)"
+    Description: "Comma-delimited list of at least two subnet IDs in different Availability Zones"
   VpcID:
     Type: String
     Default: vpc-098cfa79d637dabff
@@ -21,14 +21,6 @@ Parameters:
   TaskDesiredCount:
     Type: Number
     Default: 1
-  OnyxImageTag:
-    Type: String
-    Default: "latest"
-    Description: >
-      Docker image tag for the Onyx web server image
-      (onyxdotapp/onyx-web-server:<tag>). Use "latest" for the newest build or
-      a specific release tag (e.g. "v0.12.0") for a pinned version.
-      Update via ./update.sh after changing this value.
 
 Resources:
 
@@ -49,12 +41,10 @@ Resources:
       AvailabilityZoneRebalancing: ENABLED
       NetworkConfiguration:
         AwsvpcConfiguration:
-          AssignPublicIp: DISABLED
+          AssignPublicIp: ENABLED
           SecurityGroups:
-            - !Ref SecurityGroup
-            - Fn::ImportValue:
-                Fn::Sub: "${Environment}-onyx-efs-ECSTasksSecurityGroup"
-          Subnets: !Ref PrivateSubnetIDs
+            - Ref: SecurityGroup
+          Subnets: !Ref SubnetIDs
       PlatformVersion: LATEST
       DeploymentConfiguration:
         MaximumPercent: 200
@@ -87,9 +77,11 @@ Resources:
         - FromPort: 3000
           ToPort: 3000
           IpProtocol: tcp
-          SourceSecurityGroupId:
-            Fn::ImportValue:
-              Fn::Sub: "${Environment}-onyx-efs-ECSTasksSecurityGroup"
+          CidrIp: 0.0.0.0/0
+        - FromPort: 3000
+          ToPort: 3000
+          IpProtocol: tcp
+          CidrIpv6: "::/0"
 
   ServiceDiscoveryService:
     Type: "AWS::ServiceDiscovery::Service"
@@ -125,7 +117,7 @@ Resources:
         OperatingSystemFamily: LINUX
       ContainerDefinitions:
         - Name: onyx-webserver
-          Image: !Sub "onyxdotapp/onyx-web-server:${OnyxImageTag}"
+          Image: onyxdotapp/onyx-web-server:latest
           Cpu: 0
           Essential: true
           PortMappings:
@@ -139,6 +131,8 @@ Resources:
                 - "http://${Environment}-onyx-backend-api-server-service.${ImportedNamespace}:8080"
                 - ImportedNamespace: !ImportValue
                     Fn::Sub: "${Environment}-onyx-cluster-OnyxNamespaceName"
+            - Name: LICENSE_ENFORCEMENT_ENABLED
+              Value: "false"
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -149,14 +143,6 @@ Resources:
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: ecs
           User: "1000"
-          HealthCheck:
-            Command:
-              - CMD-SHELL
-              - "wget -qO- http://localhost:3000/ || exit 1"
-            Interval: 15
-            Timeout: 10
-            Retries: 5
-            StartPeriod: 30
           VolumesFrom: []
           SystemControls: []
 

@@ -1,5 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: The template used to create an ECS Cluster from the ECS Console.
+Description: >-
+  ECS cluster, Service Discovery namespace, S3 buckets (configs + file store), IAM roles, and Secrets Manager secrets
+  for Postgres (POSTGRES_PASSWORD) and Onyx (USER_AUTH_SECRET). Deploy/update this stack before service stacks.
 
 Parameters:
   Environment:
@@ -11,18 +13,6 @@ Parameters:
   VpcID:
     Type: String
     Default: vpc-098cfa79d637dabff
-  PublicSubnetIDs:
-    Type: CommaDelimitedList
-    Description: >
-      Comma-delimited list of public subnet IDs used by the Application Load Balancer
-      (nginx). Must span at least two Availability Zones. These subnets should have
-      internet-gateway routes. ECS tasks do NOT run here.
-  PrivateSubnetIDs:
-    Type: CommaDelimitedList
-    Description: >
-      Comma-delimited list of private subnet IDs where all ECS Fargate tasks run.
-      These subnets must have outbound internet access via a NAT Gateway so tasks
-      can pull Docker images and reach AWS APIs.
 
 Resources:
   ECSCluster:
@@ -58,16 +48,61 @@ Resources:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
 
+  # User uploads / FILE_STORE_BACKEND=s3 (see S3_FILE_STORE_BUCKET_NAME). Account suffix avoids global S3 name clashes.
+  S3FileStoreBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub ${Environment}-onyx-file-store-${AWS::AccountId}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
   PrivateDnsNamespace:
     Type: AWS::ServiceDiscovery::PrivateDnsNamespace
     Properties:
       Description: AWS Cloud Map private DNS namespace for resources for onyx website.
       Vpc: !Ref VpcID
       Name: !Ref OnyxNamespace
+      # Nested object for Cloud Map DNS settings uses the key "Properties" (AWS docs).
       Properties:
         DnsProperties:
           SOA:
             TTL: 50
+
+  # Managed here so deploys are traceable; ECS reads JSON keys via ValueFrom ... :key::
+  PostgresUserPasswordSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub ${Environment}/postgres/user/password
+      Description: !Sub PostgreSQL password for Onyx (${Environment})
+      GenerateSecretString:
+        SecretStringTemplate: "{}"
+        GenerateStringKey: password
+        PasswordLength: 32
+        ExcludeCharacters: "\"@/\\ "
+
+  OnyxUserAuthSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub ${Environment}/onyx/user-auth-secret
+      Description: !Sub Onyx USER_AUTH_SECRET (${Environment})
+      GenerateSecretString:
+        SecretStringTemplate: "{}"
+        GenerateStringKey: secret
+        PasswordLength: 48
+        ExcludeCharacters: "\"@/\\ "
 
   ECSTaskRole:
     Type: AWS::IAM::Role
@@ -100,14 +135,28 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              - Sid: "VisualEditor0"
+              - Sid: ConfigBucketRead
                 Effect: Allow
                 Action:
-                  - "s3:GetObject"
-                  - "s3:ListBucket"
+                  - s3:GetObject
+                  - s3:ListBucket
                 Resource:
-                  - !Sub "arn:aws:s3:::${Environment}-onyx-ecs-fargate-configs/*"
-                  - !Sub "arn:aws:s3:::${Environment}-onyx-ecs-fargate-configs"
+                  - !Sub arn:aws:s3:::${Environment}-onyx-ecs-fargate-configs/*
+                  - !Sub arn:aws:s3:::${Environment}-onyx-ecs-fargate-configs
+              - Sid: FileStoreBucketReadWrite
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                  - s3:AbortMultipartUpload
+                  - s3:ListBucketMultipartUploads
+                  - s3:ListMultipartUploadParts
+                Resource:
+                  - !GetAtt S3FileStoreBucket.Arn
+                  - !Sub "${S3FileStoreBucket.Arn}/*"
 
   ECSTaskExecutionRole:
     Type: AWS::IAM::Role
@@ -139,33 +188,23 @@ Resources:
                 Action:
                   - secretsmanager:GetSecretValue
                 Resource:
-                  - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Environment}/postgres/user/password-*
-                  - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Environment}/onyx/user-auth-secret-*
+                  - !Ref PostgresUserPasswordSecret
+                  - !Ref OnyxUserAuthSecret
 
 Outputs:
-  OutputPublicSubnetIDs:
-    Description: Public subnet IDs for the Application Load Balancer
-    Value: !Join [",", !Ref PublicSubnetIDs]
-    Export:
-      Name: !Sub ${AWS::StackName}-PublicSubnetIDs
-  OutputPrivateSubnetIDs:
-    Description: Private subnet IDs for ECS Fargate tasks
-    Value: !Join [",", !Ref PrivateSubnetIDs]
-    Export:
-      Name: !Sub ${AWS::StackName}-PrivateSubnetIDs
   OutputEcsCluster:
     Description: Onyx ECS Cluster
     Value: !Ref ECSCluster
     Export:
       Name: !Sub ${AWS::StackName}-ECSClusterName
   OutputECSTaskRole:
-    Description: Onyx ECS Task Role
-    Value: !Ref ECSTaskRole
+    Description: Onyx ECS Task Role (IAM ARN for task definitions and EFS IAM authorization)
+    Value: !GetAtt ECSTaskRole.Arn
     Export:
       Name: !Sub ${AWS::StackName}-ECSTaskRole
   OutputECSTaskExecutionRole:
-    Description: Onyx ECS TaskExecutionRole
-    Value: !Ref ECSTaskExecutionRole
+    Description: Onyx ECS TaskExecutionRole (IAM ARN for task definitions)
+    Value: !GetAtt ECSTaskExecutionRole.Arn
     Export:
       Name: !Sub ${AWS::StackName}-ECSTaskExecutionRole
   OutputOnyxNamespace:
@@ -178,3 +217,18 @@ Outputs:
     Value: !Ref OnyxNamespace
     Export:
       Name: !Sub ${AWS::StackName}-OnyxNamespaceName
+  OutputPostgresPasswordEcsValueFrom:
+    Description: ECS container secret ValueFrom for POSTGRES_PASSWORD (Secrets Manager JSON key password)
+    Value: !Sub "${PostgresUserPasswordSecret}:password::"
+    Export:
+      Name: !Sub ${AWS::StackName}-PostgresPasswordEcsValueFrom
+  OutputOnyxUserAuthSecretEcsValueFrom:
+    Description: ECS container secret ValueFrom for USER_AUTH_SECRET (Secrets Manager JSON key secret)
+    Value: !Sub "${OnyxUserAuthSecret}:secret::"
+    Export:
+      Name: !Sub ${AWS::StackName}-OnyxUserAuthSecretEcsValueFrom
+  OutputOnyxFileStoreBucketName:
+    Description: S3 bucket name for Onyx file store (set S3_FILE_STORE_BUCKET_NAME on API / workers).
+    Value: !Ref S3FileStoreBucket
+    Export:
+      Name: !Sub ${AWS::StackName}-OnyxFileStoreBucketName

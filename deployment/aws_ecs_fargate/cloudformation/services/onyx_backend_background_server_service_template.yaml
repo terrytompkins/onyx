@@ -3,9 +3,9 @@ Description: CloudFormation template for Onyx Backend Background Server TaskDefi
 Parameters:
   Environment:
     Type: String
-  PrivateSubnetIDs:
+  SubnetIDs:
     Type: CommaDelimitedList
-    Description: "Comma-delimited list of private subnet IDs where ECS tasks run (no public IPs)"
+    Description: "Comma-delimited list of at least two subnet IDs in different Availability Zones"
   VpcID:
     Type: String
     Default: vpc-098cfa79d637dabff
@@ -21,14 +21,6 @@ Parameters:
   TaskDesiredCount:
     Type: Number
     Default: 1
-  OnyxImageTag:
-    Type: String
-    Default: "latest"
-    Description: >
-      Docker image tag for the Onyx backend image
-      (onyxdotapp/onyx-backend:<tag>). Use "latest" for the newest build or a
-      specific release tag (e.g. "v0.12.0") for a pinned version.
-      Update via ./update.sh after changing this value.
 
 Resources:
 
@@ -49,12 +41,10 @@ Resources:
       AvailabilityZoneRebalancing: ENABLED
       NetworkConfiguration:
         AwsvpcConfiguration:
-          AssignPublicIp: DISABLED
+          AssignPublicIp: ENABLED
           SecurityGroups:
-            - !Ref SecurityGroup
-            - Fn::ImportValue:
-                Fn::Sub: "${Environment}-onyx-efs-ECSTasksSecurityGroup"
-          Subnets: !Ref PrivateSubnetIDs
+            - Ref: SecurityGroup
+          Subnets: !Ref SubnetIDs
       PlatformVersion: LATEST
       DeploymentConfiguration:
         MaximumPercent: 200
@@ -87,9 +77,11 @@ Resources:
         - FromPort: 8080
           ToPort: 8080
           IpProtocol: tcp
-          SourceSecurityGroupId:
-            Fn::ImportValue:
-              Fn::Sub: "${Environment}-onyx-efs-ECSTasksSecurityGroup"
+          CidrIp: 0.0.0.0/0
+        - FromPort: 8080
+          ToPort: 8080
+          IpProtocol: tcp
+          CidrIpv6: "::/0"
 
   ServiceDiscoveryService:
     Type: "AWS::ServiceDiscovery::Service"
@@ -125,7 +117,7 @@ Resources:
         OperatingSystemFamily: LINUX
       ContainerDefinitions:
         - Name: onyx-backend-background
-          Image: !Sub "onyxdotapp/onyx-backend:${OnyxImageTag}"
+          Image: onyxdotapp/onyx-backend:latest
           Cpu: 0
           Essential: true
           Command:
@@ -175,18 +167,23 @@ Resources:
                     Fn::Sub: "${Environment}-onyx-cluster-OnyxNamespaceName"
             - Name: AUTH_TYPE
               Value: basic
+            # Match API server: no OpenSearch in this ECS deployment.
+            - Name: ENABLE_OPENSEARCH_INDEXING_FOR_ONYX
+              Value: "false"
+            - Name: LICENSE_ENFORCEMENT_ENABLED
+              Value: "false"
+            - Name: S3_FILE_STORE_BUCKET_NAME
+              Value:
+                Fn::ImportValue:
+                  Fn::Sub: "${Environment}-onyx-cluster-OnyxFileStoreBucketName"
           Secrets:
             - Name: POSTGRES_PASSWORD
-              ValueFrom: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Environment}/postgres/user/password
+              ValueFrom:
+                Fn::ImportValue:
+                  Fn::Sub: "${Environment}-onyx-cluster-PostgresPasswordEcsValueFrom"
             - Name: USER_AUTH_SECRET
-              ValueFrom: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Environment}/onyx/user-auth-secret
-          HealthCheck:
-            Command:
-              - CMD-SHELL
-              - "supervisorctl status || exit 1"
-            Interval: 15
-            Timeout: 10
-            Retries: 3
-            StartPeriod: 60
+              ValueFrom:
+                Fn::ImportValue:
+                  Fn::Sub: "${Environment}-onyx-cluster-OnyxUserAuthSecretEcsValueFrom"
           VolumesFrom: []
           SystemControls: []

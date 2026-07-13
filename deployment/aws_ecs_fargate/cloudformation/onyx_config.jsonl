@@ -1,0 +1,16 @@
+{
+  // Naming, likely doesn't need to be changed
+  "OnyxNamespace": "onyx",
+  "Environment": "exp",
+  "EFSName": "onyx-efs",
+
+  // Region and VPC Stuff
+  "AWSRegion": "us-east-2",
+  "VpcID": "vpc-018479f0f55689818",
+  "SubnetIDs": "subnet-0113a20ad8503407a,subnet-0b752dcf78d0606c7,subnet-0a6b78c2139d0376c",
+
+  // Domain and ACM Stuff
+  "DomainName": "dev.onyx.idexx.com",
+  "ValidationMethod": "DNS",
+  "HostedZoneId": ""  // Only specify if using Route 53 for DNS
+} 
