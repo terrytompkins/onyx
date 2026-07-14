@@ -171,6 +171,9 @@ Resources:
             # Default in app is true (dual-write to OpenSearch); ECS template has no OpenSearch service.
             - Name: ENABLE_OPENSEARCH_INDEXING_FOR_ONYX
               Value: "false"
+            # Override onyx-backend:latest image default; Vespa is disabled without this when OpenSearch is off.
+            - Name: ONYX_DISABLE_VESPA
+              Value: "false"
             - Name: LICENSE_ENFORCEMENT_ENABLED
               Value: "false"
             - Name: S3_FILE_STORE_BUCKET_NAME

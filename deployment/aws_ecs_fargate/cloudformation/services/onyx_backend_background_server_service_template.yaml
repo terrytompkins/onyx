@@ -170,6 +170,8 @@ Resources:
             # Match API server: no OpenSearch in this ECS deployment.
             - Name: ENABLE_OPENSEARCH_INDEXING_FOR_ONYX
               Value: "false"
+            - Name: ONYX_DISABLE_VESPA
+              Value: "false"
             - Name: LICENSE_ENFORCEMENT_ENABLED
               Value: "false"
             - Name: S3_FILE_STORE_BUCKET_NAME
